@@ -461,6 +461,7 @@ export function VectorFang() {
                   <h2 className="font-display text-lg text-vf-cyan">SORTIE BRIEF</h2>
                   <p>Move with WASD or arrows. Shot: Space / Z. Bomb: X. Swap drones: C.</p>
                   <p>Sortie 01 catapults off the NEXO carrier. Lock 0.55s, 3-2-1 on 0.48s beats (T-minus 2.54s to the shot), ignite 0.55s, then a 2.05s burn down the keel.</p>
+                  <p>Chip tracks swap with the sortie: title fanfare, stage themes, a faster boss loop, and a bright bonus stage. Mute from the HUD if you need silence.</p>
                   <p>LANCE drones fire lasers. SEEK drones home. Overdrive dumps every 6s.</p>
                   <p>Tiny white core is your hitbox. Shells and air units clip it — tanks, ships, and buildings you fly over. Chain air kills onto ground units for multipliers.</p>
                   <p>Each stage ends with a named boss. Watch the warning sting, then break their armor phases.</p>

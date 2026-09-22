@@ -1414,7 +1414,7 @@ export class VectorFangGame {
 			g.alive = false;
 		});
 		this.screen = "play";
-		this.sfx.startMusic(this.stage);
+		this.sfx.startBonusMusic();
 		this.sfx.warn();
 		this.onChange();
 	}
@@ -2790,6 +2790,7 @@ export class VectorFangGame {
 			ground: meta.kind === "siegecrawler" || meta.kind === "rootcitadel" || meta.kind === "dunehauler" || meta.kind === "silohydra"
 		});
 		this.sfx.boss();
+		this.sfx.startBossMusic();
 		this.shake = 8;
 		this.setAtk("");
 		this.onChange();

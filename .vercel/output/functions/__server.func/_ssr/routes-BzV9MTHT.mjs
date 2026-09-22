@@ -1,7 +1,7 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { L as require_react, v as require_jsx_runtime } from "../_libs/@tanstack/react-router+[...].mjs";
 import { a as Pause, i as Sparkle, n as Volume2, o as Medal, s as Heart, t as VolumeX } from "../_libs/lucide-react.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-zb6kZVYz.js
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-BzV9MTHT.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var Sfx = class {
@@ -17,6 +17,7 @@ var Sfx = class {
 	titleNodes = [];
 	titleTimer = null;
 	song = "off";
+	gen = 0;
 	noiseBuf = null;
 	visBound = false;
 	unlock() {
@@ -27,7 +28,7 @@ var Sfx = class {
 			this.music = this.ctx.createGain();
 			this.sfx = this.ctx.createGain();
 			this.master.gain.value = .55;
-			this.music.gain.value = .16;
+			this.music.gain.value = .2;
 			this.sfx.gain.value = .28;
 			this.music.connect(this.master);
 			this.sfx.connect(this.master);
@@ -72,7 +73,7 @@ var Sfx = class {
 		this.beep(880 + Math.random() * 80, .05, "square", .12, -400);
 	}
 	boom() {
-		this.beep(120 + Math.random() * 40, .28, "sawtooth", .35, -80);
+		this.beep(120 + Math.random() * 40, .28, "square", .22, -80);
 	}
 	hit() {
 		this.beep(320, .06, "triangle", .18, -200);
@@ -81,22 +82,22 @@ var Sfx = class {
 		this.beep(660, .08, "square", .22, 400);
 	}
 	bomb() {
-		this.beep(80, .5, "sawtooth", .5, -40);
+		this.beep(80, .5, "triangle", .42, -40);
 	}
 	overdrive() {
 		this.beep(220, .2, "square", .2, 600);
 	}
 	launch() {
-		this.beep(64, .85, "sawtooth", .34, 70);
-		this.beep(110, .45, "square", .14, 240);
-		this.beep(48, .6, "triangle", .18, 40);
+		this.beep(110, .22, "square", .16, 80);
+		this.beep(220, .35, "square", .12, 180);
+		this.beep(55, .4, "triangle", .14, 30);
 	}
 	count(n) {
 		const f = n === "3" ? 392 : n === "2" ? 494 : 660;
 		this.beep(f, .28, "square", .26, 80);
 	}
 	die() {
-		this.beep(180, .45, "sawtooth", .4, -150);
+		this.beep(180, .45, "square", .28, -150);
 	}
 	warn() {
 		if (!this.ctx || !this.sfx || this.muted) return;
@@ -122,22 +123,27 @@ var Sfx = class {
 		}
 	}
 	boss() {
-		this.beep(55, .7, "sawtooth", .48, 30);
+		this.beep(196, .18, "square", .28, 80);
+		this.beep(247, .22, "square", .22, 120);
+		this.beep(330, .28, "square", .2, 160);
 	}
 	phase() {
-		this.beep(160, .32, "sawtooth", .38, 280);
+		this.beep(160, .32, "square", .28, 280);
 	}
 	tell() {
 		this.beep(980, .09, "square", .16, 220);
 	}
+	midiHz(m) {
+		return 440 * 2 ** ((m - 69) / 12);
+	}
 	tone(freq, when, dur, type, vol) {
-		if (!this.ctx || !this.music) return;
+		if (!this.ctx || !this.music || !freq) return;
 		const o = this.ctx.createOscillator();
 		const g = this.ctx.createGain();
 		o.type = type;
 		o.frequency.value = freq;
 		g.gain.setValueAtTime(1e-4, when);
-		g.gain.exponentialRampToValueAtTime(vol, when + .018);
+		g.gain.exponentialRampToValueAtTime(vol, when + .012);
 		g.gain.exponentialRampToValueAtTime(1e-4, when + dur);
 		o.connect(g);
 		g.connect(this.music);
@@ -164,152 +170,95 @@ var Sfx = class {
 		src.start(when);
 		src.stop(when + .08);
 	}
-	startTitleMusic() {
+	kick(when) {
+		if (!this.ctx || !this.music) return;
+		const o = this.ctx.createOscillator();
+		const g = this.ctx.createGain();
+		o.type = "sine";
+		o.frequency.setValueAtTime(148, when);
+		o.frequency.exponentialRampToValueAtTime(46, when + .1);
+		g.gain.setValueAtTime(.28, when);
+		g.gain.exponentialRampToValueAtTime(.001, when + .14);
+		o.connect(g);
+		g.connect(this.music);
+		o.start(when);
+		o.stop(when + .16);
+		o.onended = () => {
+			o.disconnect();
+			g.disconnect();
+		};
+	}
+	snare(when) {
+		if (!this.ctx || !this.music || !this.noiseBuf) return;
+		const src = this.ctx.createBufferSource();
+		src.buffer = this.noiseBuf;
+		const f = this.ctx.createBiquadFilter();
+		f.type = "bandpass";
+		f.frequency.value = 1800;
+		f.Q.value = .8;
+		const g = this.ctx.createGain();
+		g.gain.setValueAtTime(.16, when);
+		g.gain.exponentialRampToValueAtTime(1e-4, when + .12);
+		src.connect(f);
+		f.connect(g);
+		g.connect(this.music);
+		src.start(when);
+		src.stop(when + .14);
+		this.tone(220, when, .06, "triangle", .06);
+	}
+	scheduleTune(name, tune) {
 		this.unlock();
-		if (this.song === "title") return;
+		if (this.song === name) return;
 		this.stopMusic();
 		if (!this.ctx || !this.music) return;
-		this.song = "title";
+		this.song = name;
+		const token = this.gen;
+		const steps = Math.max(tune.bass.length, tune.lead.length, 16);
+		const step = 60 / tune.bpm / 4;
 		const loop = () => {
-			if (this.song !== "title" || !this.ctx) return;
-			const t0 = this.ctx.currentTime + .02;
-			const beat = .2;
-			const bassA = [
-				110,
-				110,
-				82.4,
-				98,
-				110,
-				123.5,
-				82.4,
-				98
-			];
-			const bassB = [
-				73.4,
-				73.4,
-				82.4,
-				87.3,
-				98,
-				110,
-				82.4,
-				98
-			];
-			const arpA = [
-				329.6,
-				392,
-				440,
-				392,
-				329.6,
-				293.7,
-				261.6,
-				293.7
-			];
-			const arpB = [
-				246.9,
-				293.7,
-				329.6,
-				392,
-				329.6,
-				293.7,
-				261.6,
-				246.9
-			];
-			const lead = [
-				659.3,
-				0,
-				783.9,
-				659.3,
-				880,
-				783.9,
-				659.3,
-				523.3,
-				659.3,
-				0,
-				783.9,
-				987.8,
-				880,
-				783.9,
-				659.3,
-				587.3,
-				523.3,
-				587.3,
-				659.3,
-				0,
-				783.9,
-				659.3,
-				523.3,
-				440,
-				392,
-				0,
-				440,
-				523.3,
-				587.3,
-				523.3,
-				440,
-				392
-			];
-			for (let i = 0; i < 16; i++) {
-				const t = t0 + i * beat;
-				const bass = i < 8 ? bassA[i] : bassB[i - 8];
-				const arp = i < 8 ? arpA[i % 8] : arpB[i % 8];
-				this.tone(bass, t, beat * .92, "triangle", .24);
-				this.tone(bass * .5, t, beat * .92, "sine", .1);
-				this.tone(arp, t, beat * .42, "square", .07);
-				this.tone(arp * 2, t + beat * .5, beat * .36, "square", .045);
-				this.hat(t, i % 4 === 0 ? .055 : .03);
-				this.hat(t + beat * .5, .022);
+			if (this.gen !== token || !this.ctx) return;
+			if (!this.muted) {
+				const t0 = this.ctx.currentTime + .04;
+				for (let i = 0; i < steps; i++) {
+					const t = t0 + i * step;
+					const b = tune.bass[i % tune.bass.length];
+					if (b) {
+						this.tone(this.midiHz(b), t, step * 1.55, "triangle", .2);
+						this.tone(this.midiHz(b) * .5, t, step * 1.55, "sine", .07);
+					}
+					const a = tune.arp[i % tune.arp.length];
+					if (a) this.tone(this.midiHz(a), t, step * .4, "square", .042);
+					const l = tune.lead[i % tune.lead.length];
+					if (l) {
+						this.tone(this.midiHz(l), t, step * .7, "square", .095);
+						this.tone(this.midiHz(l) * 1.004, t, step * .7, "square", .04);
+					}
+					if (tune.kick[i % tune.kick.length] === "x") this.kick(t);
+					if (tune.snare[i % tune.snare.length] === "x") this.snare(t);
+					if (tune.hat[i % tune.hat.length] === "x") this.hat(t, i % 4 === 0 ? .05 : .026);
+				}
 			}
-			for (let i = 0; i < lead.length; i++) {
-				if (!lead[i]) continue;
-				this.tone(lead[i], t0 + i * (beat / 2), beat * .44, "square", .12);
-			}
-			this.titleTimer = window.setTimeout(loop, 16 * beat * 1e3 - 40);
+			this.titleTimer = window.setTimeout(loop, steps * step * 1e3 - 28);
 		};
 		loop();
 	}
+	startTitleMusic() {
+		this.scheduleTune("title", TUNES.title);
+	}
 	startMusic(stage) {
 		this.stage = stage;
-		this.unlock();
-		this.stopMusic();
-		if (!this.ctx || !this.music) return;
-		this.song = "stage";
-		const o = this.ctx.createOscillator();
-		const l = this.ctx.createOscillator();
-		const g = this.ctx.createGain();
-		const f = this.ctx.createBiquadFilter();
-		o.type = "sawtooth";
-		l.type = "sine";
-		const base = [
-			110,
-			98,
-			123,
-			92,
-			82,
-			73,
-			130,
-			87,
-			104,
-			69
-		][stage % 10];
-		o.frequency.value = base;
-		l.frequency.value = .25 + stage * .05;
-		const lg = this.ctx.createGain();
-		lg.gain.value = 18;
-		l.connect(lg);
-		lg.connect(o.frequency);
-		f.type = "lowpass";
-		f.frequency.value = 420 + stage * 80;
-		g.gain.value = .35;
-		o.connect(f);
-		f.connect(g);
-		g.connect(this.music);
-		o.start();
-		l.start();
-		this.osc = o;
-		this.lfo = l;
+		const key = stage <= 2 ? "sortie" : stage <= 5 ? "dune" : stage <= 7 ? "tide" : "crown";
+		this.scheduleTune(key, TUNES[key]);
+	}
+	startBossMusic() {
+		this.scheduleTune("boss", TUNES.boss);
+	}
+	startBonusMusic() {
+		this.scheduleTune("bonus", TUNES.bonus);
 	}
 	stopMusic() {
 		this.song = "off";
+		this.gen += 1;
 		if (this.titleTimer != null) {
 			clearTimeout(this.titleTimer);
 			this.titleTimer = null;
@@ -322,6 +271,764 @@ var Sfx = class {
 		this.lfo?.disconnect();
 		this.osc = null;
 		this.lfo = null;
+	}
+};
+var TUNES = {
+	title: {
+		bpm: 150,
+		bass: [
+			45,
+			0,
+			45,
+			0,
+			40,
+			0,
+			43,
+			0,
+			45,
+			0,
+			47,
+			0,
+			40,
+			0,
+			43,
+			0,
+			38,
+			0,
+			38,
+			0,
+			40,
+			0,
+			42,
+			0,
+			43,
+			0,
+			45,
+			0,
+			40,
+			0,
+			43,
+			0
+		],
+		arp: [
+			69,
+			72,
+			76,
+			72,
+			69,
+			67,
+			64,
+			67,
+			69,
+			72,
+			76,
+			79,
+			76,
+			72,
+			69,
+			67,
+			64,
+			67,
+			69,
+			72,
+			76,
+			72,
+			69,
+			64,
+			62,
+			0,
+			64,
+			67,
+			69,
+			67,
+			64,
+			62
+		],
+		lead: [
+			76,
+			0,
+			79,
+			76,
+			81,
+			79,
+			76,
+			72,
+			76,
+			0,
+			79,
+			83,
+			81,
+			79,
+			76,
+			74,
+			72,
+			74,
+			76,
+			0,
+			79,
+			76,
+			72,
+			69,
+			67,
+			0,
+			69,
+			72,
+			74,
+			72,
+			69,
+			67
+		],
+		kick: "x...x...x...x.x.",
+		snare: "....x.......x...",
+		hat: "x.x.x.x.x.x.x.x."
+	},
+	sortie: {
+		bpm: 140,
+		bass: [
+			50,
+			50,
+			0,
+			50,
+			45,
+			45,
+			0,
+			48,
+			50,
+			50,
+			53,
+			55,
+			57,
+			0,
+			55,
+			53,
+			50,
+			50,
+			0,
+			50,
+			48,
+			48,
+			0,
+			43,
+			45,
+			45,
+			48,
+			50,
+			53,
+			0,
+			50,
+			48
+		],
+		arp: [
+			0,
+			69,
+			0,
+			72,
+			0,
+			74,
+			0,
+			72,
+			0,
+			69,
+			0,
+			65,
+			0,
+			69,
+			0,
+			72,
+			0,
+			65,
+			0,
+			69,
+			0,
+			72,
+			0,
+			69,
+			0,
+			62,
+			0,
+			65,
+			0,
+			69,
+			0,
+			65
+		],
+		lead: [
+			74,
+			0,
+			77,
+			81,
+			79,
+			77,
+			74,
+			0,
+			72,
+			74,
+			77,
+			0,
+			79,
+			77,
+			74,
+			72,
+			69,
+			0,
+			72,
+			74,
+			77,
+			0,
+			74,
+			72,
+			65,
+			69,
+			72,
+			74,
+			72,
+			69,
+			65,
+			62
+		],
+		kick: "x...x...x...x.x.",
+		snare: "....x.......x...",
+		hat: "x.x.x.x.x.x.x.xx"
+	},
+	dune: {
+		bpm: 132,
+		bass: [
+			42,
+			42,
+			0,
+			42,
+			49,
+			49,
+			0,
+			47,
+			42,
+			42,
+			45,
+			47,
+			49,
+			0,
+			47,
+			45,
+			54,
+			54,
+			0,
+			52,
+			49,
+			49,
+			0,
+			47,
+			42,
+			42,
+			40,
+			42,
+			45,
+			0,
+			42,
+			40
+		],
+		arp: [
+			0,
+			66,
+			0,
+			69,
+			0,
+			73,
+			0,
+			69,
+			0,
+			66,
+			0,
+			61,
+			0,
+			66,
+			0,
+			69,
+			0,
+			61,
+			0,
+			66,
+			0,
+			69,
+			0,
+			66,
+			0,
+			54,
+			0,
+			61,
+			0,
+			66,
+			0,
+			61
+		],
+		lead: [
+			66,
+			0,
+			69,
+			73,
+			71,
+			69,
+			66,
+			0,
+			61,
+			66,
+			69,
+			0,
+			73,
+			71,
+			69,
+			66,
+			64,
+			0,
+			66,
+			69,
+			73,
+			0,
+			69,
+			66,
+			61,
+			64,
+			66,
+			69,
+			66,
+			64,
+			61,
+			54
+		],
+		kick: "x...x...x...x...",
+		snare: "....x.......x...",
+		hat: "x.x.x.x.x.x.x.x."
+	},
+	tide: {
+		bpm: 126,
+		bass: [
+			45,
+			0,
+			45,
+			52,
+			45,
+			0,
+			48,
+			52,
+			43,
+			0,
+			43,
+			50,
+			43,
+			0,
+			47,
+			50,
+			41,
+			0,
+			41,
+			48,
+			41,
+			0,
+			45,
+			48,
+			43,
+			0,
+			43,
+			50,
+			45,
+			0,
+			48,
+			52
+		],
+		arp: [
+			0,
+			69,
+			0,
+			72,
+			0,
+			76,
+			0,
+			72,
+			0,
+			67,
+			0,
+			69,
+			0,
+			72,
+			0,
+			69,
+			0,
+			64,
+			0,
+			67,
+			0,
+			69,
+			0,
+			64,
+			0,
+			67,
+			0,
+			69,
+			0,
+			72,
+			0,
+			69
+		],
+		lead: [
+			69,
+			72,
+			76,
+			0,
+			79,
+			76,
+			72,
+			69,
+			67,
+			64,
+			67,
+			69,
+			72,
+			69,
+			64,
+			60,
+			69,
+			0,
+			72,
+			76,
+			74,
+			72,
+			69,
+			0,
+			64,
+			67,
+			69,
+			72,
+			69,
+			64,
+			60,
+			57
+		],
+		kick: "x...x.x.x...x...",
+		snare: "....x.......x...",
+		hat: "x.x.x.x.x.x.x.x."
+	},
+	crown: {
+		bpm: 118,
+		bass: [
+			43,
+			43,
+			43,
+			0,
+			50,
+			50,
+			0,
+			46,
+			43,
+			43,
+			46,
+			48,
+			50,
+			0,
+			48,
+			46,
+			39,
+			39,
+			39,
+			0,
+			46,
+			46,
+			0,
+			43,
+			41,
+			41,
+			43,
+			46,
+			48,
+			0,
+			46,
+			43
+		],
+		arp: [
+			0,
+			58,
+			0,
+			62,
+			0,
+			67,
+			0,
+			62,
+			0,
+			58,
+			0,
+			55,
+			0,
+			58,
+			0,
+			62,
+			0,
+			55,
+			0,
+			58,
+			0,
+			62,
+			0,
+			58,
+			0,
+			51,
+			0,
+			55,
+			0,
+			58,
+			0,
+			55
+		],
+		lead: [
+			70,
+			0,
+			67,
+			70,
+			74,
+			0,
+			70,
+			67,
+			65,
+			0,
+			67,
+			70,
+			74,
+			77,
+			74,
+			70,
+			67,
+			0,
+			70,
+			74,
+			72,
+			70,
+			67,
+			65,
+			62,
+			65,
+			67,
+			70,
+			67,
+			62,
+			58,
+			55
+		],
+		kick: "x.....x.x.......",
+		snare: "........x.......",
+		hat: "x...x...x...x.x."
+	},
+	boss: {
+		bpm: 168,
+		bass: [
+			40,
+			40,
+			40,
+			40,
+			43,
+			43,
+			40,
+			38,
+			40,
+			40,
+			47,
+			43,
+			40,
+			38,
+			36,
+			38,
+			40,
+			40,
+			40,
+			43,
+			47,
+			47,
+			43,
+			40,
+			38,
+			38,
+			36,
+			38,
+			40,
+			43,
+			40,
+			38
+		],
+		arp: [
+			67,
+			71,
+			76,
+			71,
+			67,
+			64,
+			67,
+			71,
+			76,
+			79,
+			76,
+			71,
+			67,
+			64,
+			59,
+			64,
+			67,
+			71,
+			76,
+			79,
+			83,
+			79,
+			76,
+			71,
+			67,
+			64,
+			59,
+			64,
+			67,
+			71,
+			67,
+			64
+		],
+		lead: [
+			76,
+			79,
+			83,
+			79,
+			76,
+			0,
+			71,
+			76,
+			79,
+			83,
+			86,
+			83,
+			79,
+			76,
+			71,
+			67,
+			76,
+			0,
+			79,
+			83,
+			88,
+			86,
+			83,
+			79,
+			76,
+			71,
+			67,
+			71,
+			76,
+			79,
+			76,
+			71
+		],
+		kick: "x.x.x.x.x.x.x.x.",
+		snare: "..x...x...x...x.",
+		hat: "xxxxxxxxxxxxxxxx"
+	},
+	bonus: {
+		bpm: 160,
+		bass: [
+			48,
+			48,
+			0,
+			48,
+			55,
+			55,
+			0,
+			52,
+			48,
+			48,
+			52,
+			55,
+			60,
+			0,
+			55,
+			52,
+			53,
+			53,
+			0,
+			53,
+			50,
+			50,
+			0,
+			47,
+			48,
+			48,
+			52,
+			55,
+			60,
+			0,
+			55,
+			52
+		],
+		arp: [
+			0,
+			72,
+			0,
+			76,
+			0,
+			79,
+			0,
+			76,
+			0,
+			72,
+			0,
+			67,
+			0,
+			72,
+			0,
+			76,
+			0,
+			71,
+			0,
+			72,
+			0,
+			76,
+			0,
+			72,
+			0,
+			67,
+			0,
+			64,
+			0,
+			67,
+			0,
+			72
+		],
+		lead: [
+			72,
+			76,
+			79,
+			84,
+			79,
+			76,
+			72,
+			0,
+			71,
+			72,
+			76,
+			79,
+			76,
+			72,
+			67,
+			64,
+			72,
+			0,
+			76,
+			79,
+			84,
+			83,
+			79,
+			76,
+			72,
+			67,
+			64,
+			67,
+			72,
+			76,
+			72,
+			67
+		],
+		kick: "x...x...x...x.x.",
+		snare: "....x.......x...",
+		hat: "x.x.x.x.x.x.x.xx"
 	}
 };
 var BUYOUT = 1e6;
@@ -3126,7 +3833,7 @@ var VectorFangGame = class {
 			g.alive = false;
 		});
 		this.screen = "play";
-		this.sfx.startMusic(this.stage);
+		this.sfx.startBonusMusic();
 		this.sfx.warn();
 		this.onChange();
 	}
@@ -4521,6 +5228,7 @@ var VectorFangGame = class {
 			ground: meta.kind === "siegecrawler" || meta.kind === "rootcitadel" || meta.kind === "dunehauler" || meta.kind === "silohydra"
 		});
 		this.sfx.boss();
+		this.sfx.startBossMusic();
 		this.shake = 8;
 		this.setAtk("");
 		this.onChange();
@@ -7516,6 +8224,7 @@ function VectorFang() {
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Move with WASD or arrows. Shot: Space / Z. Bomb: X. Swap drones: C." }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Sortie 01 catapults off the NEXO carrier. Lock 0.55s, 3-2-1 on 0.48s beats (T-minus 2.54s to the shot), ignite 0.55s, then a 2.05s burn down the keel." }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Chip tracks swap with the sortie: title fanfare, stage themes, a faster boss loop, and a bright bonus stage. Mute from the HUD if you need silence." }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "LANCE drones fire lasers. SEEK drones home. Overdrive dumps every 6s." }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Tiny white core is your hitbox. Shells and air units clip it — tanks, ships, and buildings you fly over. Chain air kills onto ground units for multipliers." }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Each stage ends with a named boss. Watch the warning sting, then break their armor phases." }),
