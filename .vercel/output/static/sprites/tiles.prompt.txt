@@ -1,0 +1,5 @@
+16-bit Super Nintendo top-down terrain tileset for VECTOR FANG.
+Seamless fill plates (desert sand, mountain rock, ocean water, grass, packed dirt)
+generated then SNES 15-bit quantized, Bayer-dithered, and sliced to 16×16.
+Mountain slope / peak / ridge / cliff tiles painted with directional light.
+Water uses 4-frame horizontal wavelet animation. Shores include N/S/E/W foam.
