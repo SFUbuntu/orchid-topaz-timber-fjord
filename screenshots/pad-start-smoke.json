@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "VECTOR FANG",
+      "hasCanvas": true,
+      "bodyTextLen": 447,
+      "bodyTextHash": "a35ff0bd68599bb13d95184d998487315ffb6c9d4b156d1ccad1c88034b0f4c9",
+      "bodyTextPrefix": "NEXO ARCADE VECTOR FANG Three years. One million. Or never go ho",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/pad-start-smoke.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "VECTOR FANG",
+      "hasCanvas": true,
+      "bodyTextLen": 384,
+      "bodyTextHash": "a4bc871bb7b5393e739a382f851aedf9eb113a52bfb6f9f783f311b3218fe00c",
+      "bodyTextPrefix": "NEXO ARCADE VECTOR FANG Three years. One million. Or never go ho",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/pad-start-smoke-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/pad-start-smoke.json"
+}

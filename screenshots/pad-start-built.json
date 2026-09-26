@@ -1,0 +1,40 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "VECTOR FANG",
+      "hasCanvas": true,
+      "bodyTextLen": 447,
+      "bodyTextHash": "a35ff0bd68599bb13d95184d998487315ffb6c9d4b156d1ccad1c88034b0f4c9",
+      "bodyTextPrefix": "NEXO ARCADE VECTOR FANG Three years. One million. Or never go ho",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/pad-start-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "VECTOR FANG",
+      "hasCanvas": true,
+      "bodyTextLen": 224,
+      "bodyTextHash": "ccf3ba408aeb5cd6a6c50fbb4ccff73760ea38042c1e3dd575733fe12d0fc91d",
+      "bodyTextPrefix": "NEXO ARCADE VECTOR FANG Three years. One million. Or never go ho",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/pad-start-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/pad-start-built.json",
+  "divergesFromBaseline": true,
+  "baselineReasons": [
+    "mobile: body text changed (384 -> 224 chars, hash mismatch)"
+  ]
+}

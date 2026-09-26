@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "VECTOR FANG",
+      "hasCanvas": true,
+      "bodyTextLen": 457,
+      "bodyTextHash": "6c7f0bf479f6e97ef16882826374cdde0719aa0fc35806278255e069f74d1df8",
+      "bodyTextPrefix": "NEXO ARCADE VECTOR FANG Three years. One million. Or never go ho",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/bind-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "VECTOR FANG",
+      "hasCanvas": true,
+      "bodyTextLen": 394,
+      "bodyTextHash": "16e351e22be80adb2ee56b954528fc35dc4daa7728aaf1ca0f8adbd186a23894",
+      "bodyTextPrefix": "NEXO ARCADE VECTOR FANG Three years. One million. Or never go ho",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/bind-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/bind-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}
