@@ -1,5 +1,8 @@
 // @ts-nocheck — recovered bundle + collision rewrite
 import { Sfx } from "./audio";
+import { Particles } from "./particles";
+import { Fluid } from "./fluid";
+import { loadControls, saveControls } from "./controls";
 import {
   BUYOUT,
   bountyOf,
@@ -84,7 +87,8 @@ export type Screen =
   | "name"
   | "ending"
   | "thanks"
-  | "vsresult";
+  | "vsresult"
+  | "controls";
 
 export type ClearReport = {
   stage: number;
@@ -311,9 +315,9 @@ var SPRITE_SRC = {
 	azure: "/sprites/azure.png",
 	crimson: "/sprites/crimson.png",
 	iron: "/sprites/iron.png",
-	wasp: "/sprites/jet-red.png",
-	hornet: "/sprites/jet-red2.png",
-	gunbarge: "/sprites/tank-yellow.png",
+	wasp: "/sprites/jet-red.png?v=top",
+	hornet: "/sprites/jet-red2.png?v=top",
+	gunbarge: "/sprites/tank-yellow.png?v=top",
 	gilded: "/sprites/gilded.png",
 	eyepod: "/sprites/eyepod.png",
 	redtide: "/sprites/redtide.png",
@@ -333,26 +337,26 @@ var SPRITE_SRC = {
 	battlekeel: "/sprites/harborking.png",
 	arsenalgate: "/sprites/gyre.png",
 	skycathedral: "/sprites/crowncore.png",
-	tank: "/sprites/tank.png",
-	heli: "/sprites/heli.png",
+	tank: "/sprites/tank.png?v=top",
+	heli: "/sprites/heli.png?v=top",
 	gunboat: "/sprites/destroyer.png",
 	destroyer: "/sprites/destroyer.png",
 	sub: "/sprites/sub.png",
 	keel: "/sprites/sub.png",
-	strider: "/sprites/tank.png",
-	tiles: "/sprites/tiles.png?v=waterfx",
-	"turret-blue": "/sprites/turret-blue.png",
-	"turret-red": "/sprites/turret-red.png",
-	"turret-orange": "/sprites/turret-orange.png",
+	strider: "/sprites/tank.png?v=top",
+	tiles: "/sprites/tiles.png?v=reef3",
+	"turret-blue": "/sprites/turret-blue.png?v=top",
+	"turret-red": "/sprites/turret-red.png?v=top",
+	"turret-orange": "/sprites/turret-orange.png?v=top",
 	silo: "/sprites/silo.png",
-	hangar: "/sprites/hangar.png",
+	hangar: "/sprites/hangar.png?v=top",
 	radar: "/sprites/radar.png",
 	crate: "/sprites/crate.png",
 	barrel: "/sprites/barrel.png",
 	fuel: "/sprites/fuel.png",
-	hut: "/sprites/hut.png",
+	hut: "/sprites/hut.png?v=top",
 	bush: "/sprites/bush.png",
-	tree: "/sprites/tree.png",
+	tree: "/sprites/tree.png?v=top",
 	palm: "/sprites/palm.png",
 	boat: "/sprites/boat.png"
 };
@@ -397,7 +401,9 @@ export class VectorFangGame {
 	pBullets = [];
 	eBullets = [];
 	items = [];
-	sparks = [];
+	fx = new Particles();
+	fluid = new Fluid();
+	fluidBg = 0;
 	pops = [];
 	luma = 0;
 	drones = [{
@@ -415,6 +421,39 @@ export class VectorFangGame {
 		bomb: false,
 		mode: false,
 		special: false
+	};
+	pad = {
+		connected: false,
+		name: "",
+		x: 0,
+		y: 0,
+		fire: false,
+		bomb: false,
+		special: false,
+		mode: false
+	};
+	padLatch = {
+		up: false,
+		down: false,
+		left: false,
+		right: false,
+		confirm: false,
+		cancel: false,
+		start: false
+	};
+	padInject = null;
+	padInject2 = null;
+	controls = loadControls();
+	controlsBack = "title";
+	pads = [
+		{ connected: false, name: "", x: 0, y: 0, buttons: Array(16).fill(false) },
+		{ connected: false, name: "", x: 0, y: 0, buttons: Array(16).fill(false) }
+	];
+	_padPrev = [Array(16).fill(false), Array(16).fill(false)];
+	_navHold = {
+		x: 0,
+		y: 0,
+		next: 0
 	};
 	onChange = () => {};
 	stageClearT = 0;
@@ -509,8 +548,8 @@ export class VectorFangGame {
 				"ArrowRight",
 				"Enter"
 			].includes(e.code)) e.preventDefault();
-			if (e.code === "KeyP" && this.screen === "play" && !this.hack) this.pause();
-			if (e.code === "Escape" && this.screen === "play") this.pause();
+			if (e.code === "Escape" && (this.screen === "play" || this.screen === "pause")) this.pause();
+			if (this.screen === "play" && this.pauseKey(e.code)) this.pause();
 			if (e.code === "KeyM") this.toggleMute();
 			if (this.screen === "continue" && (e.code === "Space" || e.code === "Enter" || e.code === "KeyZ")) this.doContinue();
 			if (this.screen === "name") this.handleNameKey(e.code);
@@ -520,6 +559,8 @@ export class VectorFangGame {
 		const onUp = (e) => this.keys.delete(e.code);
 		window.addEventListener("keydown", onDown);
 		window.addEventListener("keyup", onUp);
+		const onPad = () => this.sfx.unlock();
+		window.addEventListener("gamepadconnected", onPad);
 		window.addEventListener("blur", () => this.keys.clear());
 		const onPointer = () => {
 			if (this.demo) this.abortDemo();
@@ -532,6 +573,7 @@ export class VectorFangGame {
 		this._unbind = () => {
 			window.removeEventListener("keydown", onDown);
 			window.removeEventListener("keyup", onUp);
+			window.removeEventListener("gamepadconnected", onPad);
 			this.canvas.removeEventListener("pointerdown", onPointer);
 		};
 		if (typeof window !== "undefined") {
@@ -546,6 +588,10 @@ export class VectorFangGame {
 				skipToBoss: (stage) => this.skipToBoss(stage),
 				killBoss: () => {
 					for (const e of this.enemies) if (e.alive && isBossKind(e.kind)) this.hurt(e, 9999, false);
+				},
+				burst: (x, y) => {
+					this.boomFx(x ?? 180, y ?? 300, "#ffb347", 1.6);
+					this.fx.splash((x ?? 180) + 40, (y ?? 300) + 20);
 				},
 				hurtBoss: (n) => {
 					for (const e of this.enemies) if (e.alive && isBossKind(e.kind)) this.hurt(e, n ?? e.maxHp * .38, false);
@@ -563,6 +609,52 @@ export class VectorFangGame {
 				startDemo: () => this.startDemo(),
 				abortDemo: () => this.abortDemo(),
 				startHack: () => this.startHack(),
+				clearPad: () => {
+					this.padInject = null;
+					this.padInject2 = null;
+					for (const row of this._padPrev) row.fill(false);
+				},
+				setPad: (s = {}) => {
+					const buttons = Array(16).fill(false);
+					const map = {
+						cross: 0,
+						circle: 1,
+						square: 2,
+						triangle: 3,
+						l1: 4,
+						r1: 5,
+						l2: 6,
+						r2: 7,
+						share: 8,
+						options: 9,
+						up: 12,
+						down: 13,
+						left: 14,
+						right: 15
+					};
+					for (const [k, i] of Object.entries(map)) if (s[k]) buttons[i] = true;
+					this.padInject = {
+						connected: s.connected !== false,
+						name: "Wireless Controller",
+						buttons,
+						axes: [s.x || 0, s.y || 0, 0, 0]
+					};
+				},
+				setDevice: (player, device) => this.setDevice(player, device),
+				openName: () => {
+					this.nameChars = ["A", "A", "A"];
+					this.nameSlot = 0;
+					this.pendingEnd = "over";
+					this.screen = "name";
+					this.onChange();
+				},
+				setPad2: (s = {}) => {
+					const buttons = Array(16).fill(false);
+					const map = { cross: 0, circle: 1, square: 2, triangle: 3, l1: 4, r1: 5, l2: 6, r2: 7, share: 8, options: 9, up: 12, down: 13, left: 14, right: 15 };
+					for (const [k, i] of Object.entries(map)) if (s[k]) buttons[i] = true;
+					this.padInject2 = { connected: s.connected !== false, name: "Wireless Controller 2", buttons, axes: [s.x || 0, s.y || 0, 0, 0] };
+					if (!this.padInject) this.padInject = { connected: false, name: "", buttons: Array(16).fill(false), axes: [0, 0, 0, 0] };
+				},
 				playStage: (n) => {
 					this.hack = false;
 					this.demo = false;
@@ -870,7 +962,7 @@ export class VectorFangGame {
 			this.sfx.startMusic(0);
 		} else {
 			this.screen = "intro";
-			this.sfx.startMusic(0);
+			this.sfx.startBriefMusic();
 		}
 		this.onChange();
 	}
@@ -1015,6 +1107,7 @@ export class VectorFangGame {
 		this.vs = vs;
 		this.idleT = 0;
 		this.screen = "select";
+		this.sfx.startHangarMusic();
 		this.onChange();
 	}
 	launchCampaign() {
@@ -1032,10 +1125,12 @@ export class VectorFangGame {
 		this.unlock();
 		this.applyLoadout();
 		this.screen = "play";
+		this.sfx.startMusic(this.stage);
 		this.onChange();
 	}
 	openHangar() {
 		this.screen = "shop";
+		this.sfx.startHangarMusic();
 		this.onChange();
 	}
 	priceOf(id) {
@@ -1148,12 +1243,12 @@ export class VectorFangGame {
 		}
 		this.pendingBonus = this.stage === 1 || this.stage === 4 || this.stage === 7;
 		this.screen = "clear";
-		this.sfx.pickup();
+		this.sfx.startClearMusic();
 		this.onChange();
 	}
 	openVsResult() {
 		this.saveHi();
-		this.sfx.stopMusic();
+		this.sfx.startTitleMusic();
 		this.pendingEnd = "vsresult";
 		if (qualifies(this.score, this.hiTable)) {
 			this.nameChars = [
@@ -1179,7 +1274,7 @@ export class VectorFangGame {
 			return;
 		}
 		this.stage += 1;
-		this.sfx.startMusic(this.stage);
+		this.sfx.startBriefMusic();
 		this.beginStage();
 		this.screen = "brief";
 		this.onChange();
@@ -1235,6 +1330,8 @@ export class VectorFangGame {
 	finishRun(next) {
 		this.saveHi();
 		this.pendingEnd = next;
+		if (next === "thanks") this.sfx.startEndingMusic();
+		else if (next === "over") this.sfx.startTitleMusic();
 		if (qualifies(this.score, this.hiTable)) {
 			this.nameChars = [
 				"A",
@@ -1281,6 +1378,8 @@ export class VectorFangGame {
 		return bountyOf(this.score) >= BUYOUT;
 	}
 	beginStage() {
+		this.fx.clear();
+		this.fluid.clear();
 		this.stageT = 0;
 		this.spawnI = -1;
 		this.bossAlive = false;
@@ -1304,6 +1403,7 @@ export class VectorFangGame {
 		}
 		this.applyLoadout();
 		this.bg = 0;
+		this.fluidBg = 0;
 		this.launchT = this.stage === 0 && !this.vs && !this.hack && !this.demo ? LAUNCH_DUR : 0;
 		this.launchBark = "";
 		if (this.launchT > 0) {
@@ -1452,7 +1552,7 @@ export class VectorFangGame {
 		this.bonusPay += 500;
 		this.score += 500;
 		this.spawnStar(x, y, 42);
-		this.spark(x, y, 18, "#f0c14a");
+		this.boomFx(x, y, "#f0c14a", 0.8);
 		this.onChange();
 	}
 	missBonusTarget() {
@@ -1483,7 +1583,7 @@ export class VectorFangGame {
 			this.sfx.startMusic(this.stage);
 		} else {
 			this.screen = "brief";
-			this.sfx.startMusic(this.stage);
+			this.sfx.startBriefMusic();
 		}
 		this.onChange();
 	}
@@ -1496,12 +1596,203 @@ export class VectorFangGame {
 	held(code) {
 		return this.keys.has(code) || this.inject.has(code);
 	}
+	pauseKey(code) {
+		if (this.controls.p1.device !== "pad" && code === this.controls.p1.keys.pause) return true;
+		if (this.controls.p2.device !== "pad" && code === this.controls.p2.keys.pause) return true;
+		return false;
+	}
+	openControls() {
+		this.controlsBack = this.screen === "controls" ? "title" : this.screen === "play" ? "pause" : this.screen;
+		this.screen = "controls";
+		this.onChange();
+	}
+	closeControls() {
+		const back = this.controlsBack;
+		this.screen = back === "controls" || back === "play" ? "title" : back || "title";
+		this.onChange();
+	}
+	setDevice(player, device) {
+		const side = player === 2 ? this.controls.p2 : this.controls.p1;
+		side.device = device;
+		saveControls(this.controls);
+		this.onChange();
+	}
+	bindAct(player, kind, act, value) {
+		const side = player === 2 ? this.controls.p2 : this.controls.p1;
+		if (kind === "pad") side.pad[act] = value;
+		else side.keys[act] = value;
+		saveControls(this.controls);
+		this.onChange();
+	}
+	slotFor(player) {
+		const p1pad = this.controls.p1.device !== "keys";
+		const p2pad = this.controls.p2.device !== "keys";
+		if (player === 1) return p1pad ? 0 : -1;
+		if (!p2pad) return -1;
+		return p1pad ? 1 : 0;
+	}
+	blankPad() {
+		return { connected: false, name: "", x: 0, y: 0, buttons: Array(16).fill(false), axes: [0, 0, 0, 0] };
+	}
+	packPad(gp) {
+		if (!gp) return this.blankPad();
+		if (gp.buttons && gp.axes && gp.name !== undefined && !gp.id && !gp.mapping) {
+			const dead = .18;
+			let x = gp.axes[0] || 0;
+			let y = gp.axes[1] || 0;
+			if (Math.abs(x) < dead) x = 0;
+			if (Math.abs(y) < dead) y = 0;
+			return {
+				connected: !!gp.connected,
+				name: gp.name || "",
+				x: Math.max(-1, Math.min(1, x)),
+				y: Math.max(-1, Math.min(1, y)),
+				buttons: gp.buttons.slice(0, 16),
+				axes: gp.axes.slice(0, 4)
+			};
+		}
+		const buttons = Array(16).fill(false);
+		const axes = [0, 0, 0, 0];
+		for (let i = 0; i < 16; i++) {
+			const b = gp.buttons[i];
+			buttons[i] = !!(b && (b.pressed || b.value > .45));
+		}
+		for (let i = 0; i < 4; i++) axes[i] = gp.axes[i] || 0;
+		const dead = .18;
+		let x = axes[0];
+		let y = axes[1];
+		if (Math.abs(x) < dead) x = 0;
+		if (Math.abs(y) < dead) y = 0;
+		return {
+			connected: true,
+			name: gp.id || "Gamepad",
+			x: Math.max(-1, Math.min(1, x)),
+			y: Math.max(-1, Math.min(1, y)),
+			buttons,
+			axes
+		};
+	}
+	readPads() {
+		if (this.padInject || this.padInject2) return [this.packPad(this.padInject), this.packPad(this.padInject2)];
+		const list = typeof navigator !== "undefined" && navigator.getGamepads ? [...navigator.getGamepads()].filter((g) => g && g.connected) : [];
+		return [this.packPad(list[0]), this.packPad(list[1])];
+	}
+	actionDown(player, act) {
+		const side = player === 2 ? this.controls.p2 : this.controls.p1;
+		if (side.device !== "pad" && this.held(side.keys[act])) return true;
+		if (side.device === "keys") return false;
+		const slot = this.slotFor(player);
+		const pad = slot >= 0 ? this.pads[slot] : null;
+		if (!pad || !pad.connected) return false;
+		const bound = side.pad[act];
+		const pairs = { fire: [0, 7], bomb: [1, 5], special: [2, 4] };
+		const group = pairs[act];
+		if (group && group.includes(bound)) return group.some((i) => pad.buttons[i]);
+		return !!pad.buttons[bound];
+	}
+	moveVec(player) {
+		const side = player === 2 ? this.controls.p2 : this.controls.p1;
+		let x = 0, y = 0;
+		if (side.device !== "pad") {
+			if (this.held(side.keys.left)) x -= 1;
+			if (this.held(side.keys.right)) x += 1;
+			if (this.held(side.keys.up)) y -= 1;
+			if (this.held(side.keys.down)) y += 1;
+		}
+		if (side.device !== "keys") {
+			const slot = this.slotFor(player);
+			const pad = slot >= 0 ? this.pads[slot] : null;
+			if (pad && pad.connected) {
+				x += pad.x;
+				y += pad.y;
+				if (pad.buttons[side.pad.left]) x = -1;
+				if (pad.buttons[side.pad.right]) x = 1;
+				if (pad.buttons[side.pad.up]) y = -1;
+				if (pad.buttons[side.pad.down]) y = 1;
+			}
+		}
+		return { x, y };
+	}
+	pollPad() {
+		const pads = this.readPads();
+		this.pads = pads;
+		const gp = pads[0];
+		const prev = this._padPrev[0];
+		const down = (i) => !!gp.buttons[i];
+		const edge = (i) => down(i) && !prev[i];
+		this.pad.connected = gp.connected;
+		this.pad.name = gp.name;
+		this.pad.x = gp.x;
+		this.pad.y = gp.y;
+		this.pad.fire = this.actionDown(1, "fire");
+		this.pad.bomb = this.actionDown(1, "bomb");
+		this.pad.special = this.actionDown(1, "special");
+		this.pad.mode = this.actionDown(1, "mode");
+		let nx = down(14) ? -1 : down(15) ? 1 : Math.abs(gp.axes?.[0] || 0) > .55 ? Math.sign(gp.axes[0]) : 0;
+		let ny = down(12) ? -1 : down(13) ? 1 : Math.abs(gp.axes?.[1] || 0) > .55 ? Math.sign(gp.axes[1]) : 0;
+		if (nx && ny && !down(12) && !down(13) && !down(14) && !down(15)) {
+			if (Math.abs(gp.axes[1]) >= Math.abs(gp.axes[0])) nx = 0;
+			else ny = 0;
+		}
+		const now = performance.now();
+		const hold = this._navHold;
+		if (nx !== hold.x || ny !== hold.y) {
+			hold.x = nx;
+			hold.y = ny;
+			hold.next = now + 280;
+			if (nx < 0) this.padLatch.left = true;
+			if (nx > 0) this.padLatch.right = true;
+			if (ny < 0) this.padLatch.up = true;
+			if (ny > 0) this.padLatch.down = true;
+		} else if ((nx || ny) && now >= hold.next) {
+			hold.next = now + 140;
+			if (nx < 0) this.padLatch.left = true;
+			if (nx > 0) this.padLatch.right = true;
+			if (ny < 0) this.padLatch.up = true;
+			if (ny > 0) this.padLatch.down = true;
+		}
+		if (edge(0)) this.padLatch.confirm = true;
+		if (edge(1)) this.padLatch.cancel = true;
+		if (edge(8) && (this.screen === "play" || this.screen === "pause")) this.toggleMute();
+		const pauseEdge = (this.screen === "play" || this.screen === "pause") && [0, 1].some((slot) => {
+			const pad = pads[slot];
+			if (!pad?.connected) return false;
+			const player = this.slotFor(1) === slot ? 1 : this.slotFor(2) === slot ? 2 : 0;
+			if (!player) return false;
+			const side = player === 2 ? this.controls.p2 : this.controls.p1;
+			if (side.device === "keys") return false;
+			const btn = side.pad.pause;
+			return !!pad.buttons[btn] && !this._padPrev[slot][btn];
+		});
+		if (edge(9)) {
+			if (this.screen === "play" || this.screen === "pause") this.pause();
+			else this.padLatch.start = true;
+		} else if (pauseEdge) this.pause();
+		const busy = down(0) || down(1) || down(2) || down(3) || down(9) || down(12) || down(13) || down(14) || down(15) || Math.abs(gp.x) + Math.abs(gp.y) > .2;
+		for (let slot = 0; slot < 2; slot++) {
+			for (let i = 0; i < 16; i++) this._padPrev[slot][i] = !!pads[slot].buttons[i];
+		}
+		if (busy && this.demo) this.abortDemo();
+		if (busy && this.screen === "title") this.idleT = 0;
+	}
+	takePadMenu() {
+		const ev = { ...this.padLatch };
+		this.padLatch.up = false;
+		this.padLatch.down = false;
+		this.padLatch.left = false;
+		this.padLatch.right = false;
+		this.padLatch.confirm = false;
+		this.padLatch.cancel = false;
+		this.padLatch.start = false;
+		return ev;
+	}
 	loop = (t) => {
 		this.raf = requestAnimationFrame(this.loop);
 		if (!this.last) this.last = t;
 		let dt = (t - this.last) / 1e3;
 		this.last = t;
 		if (dt > .1) dt = .1;
+		this.pollPad();
 		this.acc += dt;
 		const step = 1 / 60;
 		while (this.acc >= step) {
@@ -1806,7 +2097,7 @@ export class VectorFangGame {
 		const pts = g.score;
 		if (cpu) this.cpuScore += pts;
 		else this.score += pts;
-		this.spark(g.x, g.y, 16, "#f0c14a");
+		this.boomFx(g.x, g.y, "#f0c14a", isBuilding(g.kind) ? 1.3 : 0.9);
 		this.sfx.boom();
 		this.shake = Math.max(this.shake, 5);
 		if (g.mark) this.creditBonusTarget(g.x, g.y);
@@ -1814,8 +2105,7 @@ export class VectorFangGame {
 		if (isBlastTarget(g.kind)) this.envBlast(g.x, g.y, g.kind === "fuel" ? 64 : 40, g.kind === "fuel" ? 14 : 8);
 	}
 	envBlast(x, y, radius, dmg) {
-		this.spark(x, y, 22, "#ff7a2a");
-		this.spark(x, y, 10, "#fff4c2");
+		this.boomFx(x, y, "#ff7a2a", radius > 50 ? 1.6 : 1.1);
 		this.shake = Math.max(this.shake, 7);
 		for (const g of this.grounds) {
 			if (!g.alive) continue;
@@ -1900,33 +2190,38 @@ export class VectorFangGame {
 		return x;
 	}
 	spark(x, y, n, color) {
-		for (let i = 0; i < n; i++) {
-			let s = this.sparks.find((p) => !p.alive);
-			const vx = (Math.random() - .5) * 180;
-			const vy = (Math.random() - .5) * 180;
-			if (!s) {
-				s = {
-					alive: true,
-					x,
-					y,
-					vx,
-					vy,
-					life: .35 + Math.random() * .25,
-					color,
-					s: 1 + Math.random() * 2
-				};
-				this.sparks.push(s);
-			} else Object.assign(s, {
-				alive: true,
-				x,
-				y,
-				vx,
-				vy,
-				life: .35 + Math.random() * .25,
-				color,
-				s: 1 + Math.random() * 2
-			});
+		this.fx.spark(x, y, n, color);
+	}
+	boomFx(x, y, color, power) {
+		this.fx.boom(x, y, color, power);
+		const mag = 0.85 + power * 0.75;
+		if (this.wet(x, y)) this.fluid.impulse(x, y, mag);
+		else {
+			const near = [[0, 18], [0, -18], [18, 0], [-18, 0]];
+			for (const [dx, dy] of near) {
+				if (this.wet(x + dx, y + dy)) {
+					this.fluid.impulse(x + dx, y + dy, mag * 0.7);
+					break;
+				}
+			}
 		}
+	}
+	stirFluid() {
+		if (this.wet(this.px, this.py + 16)) this.fluid.wake(this.px, this.py + 14);
+		if (this.vs || this.hasWing()) {
+			if (this.wet(this.cx, this.cy + 16)) this.fluid.wake(this.cx, this.cy + 14);
+		}
+		for (const e of this.enemies) {
+			if (!e.alive) continue;
+			if (e.kind === "sub" || e.kind === "keel" || e.kind === "gunboat" || e.kind === "destroyer" || e.kind === "krakenkeel") this.fluid.wake(e.x, e.y);
+		}
+		const drip = (b) => {
+			if (!b.alive) return;
+			if (((b.y | 0) & 15) > 3) return;
+			if (this.wet(b.x, b.y)) this.fluid.impulse(b.x, b.y, 0.05);
+		};
+		for (const b of this.pBullets) drip(b);
+		for (const b of this.eBullets) drip(b);
 	}
 	dropItem(x, y) {
 		this.forceDrop(x + (Math.random() * 16 - 8), y, "G");
@@ -1973,10 +2268,9 @@ export class VectorFangGame {
 		else {
 			const duo = this.crew === "duo" && !this.vs;
 			let mx = 0, my = 0;
-			if (this.held("KeyA") || !duo && this.held("ArrowLeft")) mx -= 1;
-			if (this.held("KeyD") || !duo && this.held("ArrowRight")) mx += 1;
-			if (this.held("KeyW") || !duo && this.held("ArrowUp")) my -= 1;
-			if (this.held("KeyS") || !duo && this.held("ArrowDown")) my += 1;
+			const m1 = this.moveVec(1);
+			mx = m1.x;
+			my = m1.y;
 			if (this.touch.moving) {
 				mx += this.touch.mx;
 				my += this.touch.my;
@@ -1995,10 +2289,9 @@ export class VectorFangGame {
 			if (mx > .01) this.qaYaw -= dt * 3;
 			if (duo) {
 				let ox = 0, oy = 0;
-				if (this.held("ArrowLeft")) ox -= 1;
-				if (this.held("ArrowRight")) ox += 1;
-				if (this.held("ArrowUp")) oy -= 1;
-				if (this.held("ArrowDown")) oy += 1;
+				const m2 = this.moveVec(2);
+				ox = m2.x;
+				oy = m2.y;
 				const om = Math.hypot(ox, oy) || 1;
 				if (om > 1) {
 					ox /= om;
@@ -2038,14 +2331,16 @@ export class VectorFangGame {
 			}
 		}
 		const canShoot = this.launchT <= 0 || this.launchPhase() === "shot" || this.launchPhase() === "lift";
-		if (canShoot && (this.demo || this.hack || this.held("Space") || this.held("KeyJ") || this.touch.fire) && this.fireCd <= 0) this.fire();
-		if (!this.demo && !this.hack && (this.held("KeyZ") || this.touch.special) && this.specialCd <= 0) this.fireSpecial();
-		if (!this.demo && !this.hack && (this.held("KeyX") || this.held("ShiftLeft") || this.held("KeyK") || this.touch.bomb) && this.bombCd <= 0) this.doBomb();
-		const modeNow = this.held("KeyC") || this.held("KeyL") || this.touch.mode;
+		if (canShoot && (this.demo || this.hack || this.actionDown(1, "fire") || this.touch.fire) && this.fireCd <= 0) this.fire();
+		if (!this.demo && !this.hack && (this.actionDown(1, "special") || this.touch.special) && this.specialCd <= 0) this.fireSpecial();
+		if (!this.demo && !this.hack && (this.actionDown(1, "bomb") || this.touch.bomb) && this.bombCd <= 0) this.doBomb();
+		const modeNow = this.actionDown(1, "mode") || this.touch.mode || (this.crew === "duo" && !this.vs && this.actionDown(2, "mode"));
 		if (!this.demo && !this.hack && modeNow && !this.modeHeld) this.toggleMode();
 		this.modeHeld = modeNow;
 		if (this.crew === "duo" && !this.vs && !this.hack && !this.demo) {
-			if ((this.held("Enter") || this.held("NumpadEnter")) && this.cpuFireCd <= 0) this.fireFrom(this.cx, this.cy, this.p2Ship, false);
+			if (this.actionDown(2, "fire") && this.cpuFireCd <= 0) this.fireFrom(this.cx, this.cy, this.p2Ship, false);
+			if (this.actionDown(2, "bomb") && this.bombCd <= 0) this.doBomb();
+			if (this.actionDown(2, "special") && this.specialCd <= 0) this.fireSpecial();
 		}
 		if (this.vs || this.crew === "wingman") this.updateCpu(dt);
 		if (this.hack && this.bombCd <= 0) {
@@ -2061,6 +2356,9 @@ export class VectorFangGame {
 		this.updateItems(dt);
 		this.updateSparks(dt);
 		this.collisions();
+		this.stirFluid();
+		this.fluid.step(dt, this.bg - this.fluidBg, (x, y) => this.wet(x, y));
+		this.fluidBg = this.bg;
 		if (this.midSpawnT > 0 && this.stageClearT <= 0 && !this.bossAlive) {
 			this.midSpawnT -= dt;
 			if (this.midSpawnT <= 0) this.spawnBoss();
@@ -2423,7 +2721,7 @@ export class VectorFangGame {
 				if (!g.alive) continue;
 				this.hurtGround(g, 22, false);
 			}
-			this.spark(this.px, this.py, 36, "#c4d46a");
+			this.boomFx(this.px, this.py, "#c4d46a", 1.8);
 		}
 	}
 	doBomb() {
@@ -2442,7 +2740,7 @@ export class VectorFangGame {
 			if (!g.alive) continue;
 			this.hurtGround(g, 18, false);
 		}
-		this.spark(this.px, this.py, 40, "#fff4c2");
+		this.boomFx(this.px, this.py, "#fff4c2", 2);
 		this.onChange();
 	}
 	toggleMode() {
@@ -2790,7 +3088,7 @@ export class VectorFangGame {
 			ground: meta.kind === "siegecrawler" || meta.kind === "rootcitadel" || meta.kind === "dunehauler" || meta.kind === "silohydra"
 		});
 		this.sfx.boss();
-		this.sfx.startBossMusic();
+		this.sfx.startBossMusic(this.stage);
 		this.shake = 8;
 		this.setAtk("");
 		this.onChange();
@@ -3967,13 +4265,7 @@ export class VectorFangGame {
 		this.floatPts(x, y, "LUMA", "#ffe08a");
 	}
 	updateSparks(dt) {
-		for (const s of this.sparks) {
-			if (!s.alive) continue;
-			s.x += s.vx * dt;
-			s.y += s.vy * dt;
-			s.life -= dt;
-			if (s.life <= 0) s.alive = false;
-		}
+		this.fx.update(dt);
 		for (const p of this.pops) {
 			if (!p.alive) continue;
 			p.y += p.vy * dt;
@@ -4054,7 +4346,7 @@ export class VectorFangGame {
 			else this.invuln = this.ship === "iron" ? 1.6 : 1.1;
 			this.shake = 7;
 			this.sfx.pickup();
-			this.spark(x, y, 16, "#f0c14a");
+			this.boomFx(x, y, "#f0c14a", 0.7);
 			this.eBullets.forEach((b) => b.alive = false);
 			this.onChange();
 			return;
@@ -4066,7 +4358,7 @@ export class VectorFangGame {
 		this.shake = 12;
 		this.power = Math.max(this.loadout.cannon, this.power - 1);
 		this.dronesN = Math.max(1 + this.loadout.drone, this.dronesN - 1);
-		this.spark(x, y, 24, "#3ec8ff");
+		this.boomFx(x, y, "#3ec8ff", 1.5);
 		this.eBullets.forEach((b) => b.alive = false);
 		if (this.luma > 0) {
 			this.luma = 0;
@@ -4092,7 +4384,12 @@ export class VectorFangGame {
 			if (cpu) this.cpuScore += pts;
 			else this.score += pts;
 			const boss = isBossKind(e.kind);
-			this.spark(e.x, e.y, bomb || boss ? 22 : 12, boss ? "#3ec8ff" : "#ffb347");
+			const sea = e.kind === "sub" || e.kind === "keel" || e.kind === "gunboat" || e.kind === "destroyer";
+			this.boomFx(e.x, e.y, boss ? "#3ec8ff" : "#ffb347", bomb || boss ? 1.7 : 1);
+			if (sea) {
+				this.fx.splash(e.x, e.y);
+				this.fluid.impulse(e.x, e.y, 1.3);
+			}
 			this.sfx.boom();
 			this.shake = Math.max(this.shake, bomb || boss ? 12 : 4);
 			if (e.mark) this.creditBonusTarget(e.x, e.y);
@@ -4167,6 +4464,7 @@ export class VectorFangGame {
 		drawTileMap(c, this.sprites.tiles, this.map, this.bg, this.stageT);
 	}
 	drawWorld(c) {
+		this.fluid.draw(c);
 		if (this.stage === 0) this.drawCarrier(c);
 		for (const d of this.decor) {
 			if (!d.alive) continue;
@@ -4195,6 +4493,7 @@ export class VectorFangGame {
 					c.fillStyle = "#f0c14a";
 					c.fillRect(g.x - 14, g.y - g.r - 8, 28 * (g.hp / g.maxHp), 3);
 				}
+				if (g.kind === "bunker" || g.kind === "tower" || g.kind === "radar") this.drawEmplacement(c, g);
 			}
 			if (g.mark) this.drawMark(c, g.x, g.y, g.r + 6);
 		}
@@ -4258,13 +4557,7 @@ export class VectorFangGame {
 			c.textAlign = "center";
 			c.fillText(this.vs ? "CPU" : this.crew === "duo" ? "P2" : "CPU", this.cx, this.cy - 22);
 		}
-		for (const s of this.sparks) {
-			if (!s.alive) continue;
-			c.globalAlpha = Math.max(0, s.life * 2);
-			c.fillStyle = s.color;
-			c.fillRect(s.x, s.y, s.s, s.s);
-			c.globalAlpha = 1;
-		}
+		this.fx.draw(c);
 		for (const p of this.pops) {
 			if (!p.alive) continue;
 			c.save();
@@ -5020,6 +5313,117 @@ export class VectorFangGame {
 	drawPlayer(c) {
 		this.drawCraft(c, this.px, this.py, this.ship);
 	}
+	drawEmplacement(c, g) {
+		c.save();
+		c.translate(g.x, g.y - 6);
+		if (g.kind === "radar") {
+			c.strokeStyle = "#8ec8e4";
+			c.globalAlpha = .35;
+			c.beginPath();
+			c.arc(0, 0, 12, 0, Math.PI * 2);
+			c.stroke();
+			c.globalAlpha = .9;
+			c.rotate(this.stageT * 2.2);
+			c.lineWidth = 2;
+			c.beginPath();
+			c.moveTo(0, 0);
+			c.lineTo(13, -3);
+			c.stroke();
+			c.restore();
+			return;
+		}
+		const ang = Math.atan2(this.py - g.y, this.px - g.x);
+		c.rotate(ang - Math.PI / 2);
+		c.fillStyle = "#d8dcd4";
+		c.fillRect(-1.5, 0, 3, 14);
+		if (g.t % 1 < .12) {
+			c.globalAlpha = .9;
+			c.fillStyle = "#ffe27a";
+			c.beginPath();
+			c.arc(0, 16, 4, 0, Math.PI * 2);
+			c.fill();
+		}
+		c.restore();
+	}
+	paintUnitAnim(c, e, h) {
+		const t = e.t;
+		const air = e.kind === "wasp" || e.kind === "hornet" || e.kind === "lancejet" || e.kind === "gilded" || e.kind === "redtide";
+		if (air) {
+			const flick = .45 + .55 * Math.abs(Math.sin(t * 36));
+			const hue = e.kind === "gilded" ? "#f0c14a" : e.kind === "redtide" ? "#ff5a48" : "#8ef0ff";
+			c.globalAlpha = .4 + flick * .55;
+			c.fillStyle = hue;
+			const len = 5 + flick * 9;
+			c.fillRect(-4, -h * .5 - len, 2, len);
+			c.fillRect(2, -h * .5 - len * .75, 2, len * .75);
+			c.globalAlpha = .25;
+			c.fillStyle = "#fff6c8";
+			c.fillRect(-3, -h * .5 - 3, 2, 3);
+		} else if (e.kind === "heli") {
+			c.save();
+			c.globalAlpha = .45;
+			c.strokeStyle = "#e4ece4";
+			c.lineWidth = 1;
+			c.beginPath();
+			c.ellipse(0, -2, h * .62, h * .2, 0, 0, Math.PI * 2);
+			c.stroke();
+			c.rotate(t * 22);
+			c.beginPath();
+			c.moveTo(-h * .62, 0);
+			c.lineTo(h * .62, 0);
+			c.moveTo(0, -h * .2);
+			c.lineTo(0, h * .2);
+			c.stroke();
+			c.restore();
+		} else if (e.kind === "tank" || e.kind === "gunbarge" || e.kind === "strider") {
+			const scroll = t * 36 % 6;
+			c.globalAlpha = .7;
+			c.fillStyle = "#14160f";
+			for (let i = 0; i < 6; i++) {
+				const y = -h * .32 + i * 6 - scroll;
+				if (y > -h * .4 && y < h * .28) {
+					c.fillRect(-h * .46, y, 5, 2);
+					c.fillRect(h * .32, y, 5, 2);
+				}
+			}
+			const ang = Math.atan2(this.py - e.y, this.px - e.x);
+			c.save();
+			c.globalAlpha = 1;
+			c.rotate(ang - Math.PI / 2);
+			c.fillStyle = "#e4e8dc";
+			c.fillRect(-1.5, -2, 3, h * .42);
+			c.restore();
+		} else if (e.kind === "gunboat" || e.kind === "destroyer" || e.kind === "keel") {
+			const w = 5 + Math.sin(t * 7) * 2;
+			c.globalAlpha = .4;
+			c.fillStyle = "#f7fdff";
+			c.fillRect(-w, -h * .55, w * 2, 2);
+			c.globalAlpha = .22;
+			c.fillRect(-w * .55, -h * .72, w, 1);
+		} else if (e.kind === "sub") {
+			c.globalAlpha = .5;
+			c.strokeStyle = "#dff6fb";
+			c.beginPath();
+			c.ellipse(0, 4, h * .32, 3 + Math.sin(t * 3), 0, 0, Math.PI * 2);
+			c.stroke();
+			c.fillStyle = "#f4fdff";
+			c.globalAlpha = .7;
+			const by = t * 18 % 14;
+			c.fillRect(-5, -by, 2, 2);
+			c.fillRect(4, -(by * .6), 1, 1);
+		} else if (e.kind === "mine") {
+			c.fillStyle = Math.sin(t * 9) > 0 ? "#ff4048" : "#5a2024";
+			c.beginPath();
+			c.arc(0, -2, 2.5, 0, Math.PI * 2);
+			c.fill();
+		} else if (e.kind === "eyepod") {
+			c.rotate(t * 3);
+			c.globalAlpha = .75;
+			c.strokeStyle = "#7ee7ff";
+			c.strokeRect(-h * .28, -2, h * .56, 4);
+		}
+		c.globalAlpha = 1;
+	}
 	drawEnemy(c, e) {
 		const stealth = e.kind === "phantomwing" && e.tag <= 0 && e.flash <= 0;
 		const ghost = e.kind === "phantomwing" && !stealth;
@@ -5042,12 +5446,18 @@ export class VectorFangGame {
 		if (im && im.complete && im.naturalWidth > 0) {
 			c.save();
 			c.translate(e.x, e.y + dy);
+			const air = e.kind === "wasp" || e.kind === "hornet" || e.kind === "lancejet" || e.kind === "gilded" || e.kind === "redtide";
+			if (air) c.rotate(Math.sin(e.t * 3.2 + e.x * .02) * .1);
+			if (e.kind === "heli") c.translate(0, Math.sin(e.t * 7) * 1.8);
+			if (e.kind === "mine") c.rotate(e.t * 1.6);
+			if (e.kind === "sub") c.translate(0, Math.sin(e.t * 2.2) * 1.4);
 			if (e.kind === "gyre" || e.kind === "arsenalgate") c.rotate(e.t * .9);
 			if (e.kind === "crowncore" || e.kind === "skycathedral") c.rotate(e.t * .35);
 			const h = e.r * (isBossKind(e.kind) ? 2.35 : 2.2);
 			const w = im.naturalWidth / im.naturalHeight * h;
 			if (e.ground || seaUnit) c.drawImage(im, -w / 2, -h + 4, w, h);
 			else c.drawImage(im, -w / 2, -h / 2, w, h);
+			if (!isBossKind(e.kind)) this.paintUnitAnim(c, e, h);
 			c.restore();
 		} else {
 			c.save();

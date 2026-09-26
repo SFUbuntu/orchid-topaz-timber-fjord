@@ -3,3 +3,8 @@ node_modules/
 .github_repo
 .env
 .env.*
+attachments/
+screenshots/
+artifacts/
+*.wav
+*.zip

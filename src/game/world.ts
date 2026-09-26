@@ -272,8 +272,10 @@ function stampDeepWater(map: Uint8Array) {
       for (let dy = -2; dy <= 2; dy++)
         for (let dx = -2; dx <= 2; dx++)
           if (!isWater(get(map, x + dx, y + dy))) land += 1;
-      if (land === 0) set(map, x, y, T.waterDeep);
-      else if (land <= 2 && hash(x, y, 3) > 0.5) set(map, x, y, T.foam);
+      if (land === 0) {
+        const h = hash(x, y, 11);
+        set(map, x, y, h > 0.78 ? T.waterDeep : h > 0.4 ? T.water2 : T.water);
+      } else if (land <= 2 && hash(x, y, 3) > 0.5) set(map, x, y, T.foam);
     }
   }
 }
@@ -476,6 +478,24 @@ function drawWaterShader(
           c.globalAlpha = 0.08 + tw * 0.22;
           c.fillStyle = "#e8f8fc";
           c.fillRect(gx, gy, 2, 1);
+        }
+        if (slot > 0.94) {
+          const rx = x + 8;
+          const ry = y + 9;
+          c.globalAlpha = 0.9;
+          c.fillStyle = "#f4fbff";
+          c.beginPath();
+          c.ellipse(rx, ry + 1, 7, 5, 0, 0, Math.PI * 2);
+          c.fill();
+          c.globalAlpha = 1;
+          c.fillStyle = "#6a4630";
+          c.beginPath();
+          c.ellipse(rx, ry, 5, 3.5, 0.2, 0, Math.PI * 2);
+          c.fill();
+          c.fillStyle = "#c4a078";
+          c.fillRect(rx - 2, ry - 2, 3, 2);
+          c.fillStyle = "#3a2418";
+          c.fillRect(rx + 1, ry, 2, 2);
         }
         const pulse = 0.10 + 0.05 * Math.sin(time * 2.1 + col * 0.45 + row * 0.12);
         c.fillStyle = "#dceef4";

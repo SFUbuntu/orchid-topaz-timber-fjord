@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import { Heart, Medal, Pause, Sparkle, Volume2, VolumeX } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Gamepad2, Heart, Keyboard, Medal, Pause, Sparkle, Volume2, VolumeX } from "lucide-react";
 import { VectorFangGame, STAGES, BONUS_STAGES, type ClearReport, type Screen } from "@/game/engine";
 import { continueCost, type HiEntry } from "@/game/hiscore";
+import { ACT_LABEL, ACTS, keyLabel, padButtonLabel, type Act, type Device } from "@/game/controls";
 import { BRIEFS, BUYOUT, CREW, CREW_MODES, CREW_PORTRAITS, DIFFS, ENDINGS, LORE, MISSION_INTRO, PILOTS, PILOT_ENDINGS, PILOT_INTRO, PORTRAITS, SHOP, canEquip, emptyLoadout, money, shopPrice, specialCap, specialCount, type CrewMode, type DiffId, type Ending, type Loadout, type ShipId, type ShopId } from "@/game/story";
 
 const SHIP_ART: Record<ShipId, string> = {
@@ -110,12 +111,92 @@ function HangarCatalog({
   );
 }
 
+function padStartButton(screen: Screen, buttons: HTMLButtonElement[]) {
+  const label = (re: RegExp) => buttons.find((b) => re.test((b.textContent || "").replace(/\s+/g, " ").trim()));
+  if (screen === "title") return label(/^START$/);
+  if (screen === "select") return label(/SIGN AND LAUNCH/);
+  if (screen === "brief" || screen === "shop") return label(/^TAKE OFF$/);
+  if (screen === "intro") return label(/BRIEFING/);
+  if (screen === "continue") return label(/^CONTINUE/);
+  if (screen === "name") return label(/ENTER|OK|RANK/);
+  if (screen === "pause") return label(/RESUME/);
+  if (screen === "controls") return label(/^DONE$/);
+  return buttons.find((b) => b.className.includes("bg-vf-cyan")) ?? buttons[0];
+}
+
+function movePadFocus(buttons: HTMLButtonElement[], index: number, dx: number, dy: number) {
+  const cur = buttons[index];
+  if (!cur) return 0;
+  const box = cur.getBoundingClientRect();
+  const cx = box.left + box.width / 2;
+  const cy = box.top + box.height / 2;
+  let best = -1;
+  let bestScore = Infinity;
+  for (let i = 0; i < buttons.length; i++) {
+    if (i === index) continue;
+    const r = buttons[i].getBoundingClientRect();
+    const x = r.left + r.width / 2 - cx;
+    const y = r.top + r.height / 2 - cy;
+    if (dx && Math.sign(x) !== dx) continue;
+    if (dy && Math.sign(y) !== dy) continue;
+    if (dx && Math.abs(x) < 6) continue;
+    if (dy && Math.abs(y) < 6) continue;
+    const primary = dx ? Math.abs(x) : Math.abs(y);
+    const secondary = dx ? Math.abs(y) : Math.abs(x);
+    if (secondary > primary * 1.8 && secondary > 40) continue;
+    const score = primary + secondary * 0.4;
+    if (score < bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  }
+  return best < 0 ? index : best;
+}
+
+const CODE_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+
+function DevicePick({ value, onPick }: { value: Device; onPick: (d: Device) => void }) {
+  const opts: { id: Device; label: string; icon: ReactNode }[] = [
+    { id: "keys", label: "KEYS", icon: <Keyboard size={15} /> },
+    { id: "pad", label: "PS4", icon: <Gamepad2 size={15} /> },
+    { id: "both", label: "BOTH", icon: <span className="inline-flex items-center gap-0.5"><Keyboard size={13} /><Gamepad2 size={13} /></span> },
+  ];
+  return (
+    <div className="grid grid-cols-3 gap-1">
+      {opts.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          onClick={() => onPick(o.id)}
+          className={`flex min-h-11 items-center justify-center gap-1 rounded-sm border font-mono text-[10px] ${
+            value === o.id ? "border-vf-gold bg-vf-gold text-vf-bg" : "border-vf-line bg-vf-bg/70 text-vf-ice"
+          }`}
+        >
+          {o.icon}
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function VectorFang() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const codeRef = useRef<HTMLInputElement>(null);
   const gameRef = useRef<VectorFangGame | null>(null);
+  const focusRef = useRef(0);
+  const screenRef = useRef<Screen>("title");
   const [screen, setScreen] = useState<Screen>("title");
+  const [padOn, setPadOn] = useState(false);
+  const [codeOpen, setCodeOpen] = useState(false);
+  const [listen, setListen] = useState<{ player: 1 | 2; kind: "keys" | "pad"; act: Act } | null>(null);
+  const [who, setWho] = useState<1 | 2>(1);
+  const [, bump] = useState(0);
+  const codeOpenRef = useRef(false);
+  const listenRef = useRef<{ player: 1 | 2; kind: "keys" | "pad"; act: Act } | null>(null);
+  const listenPrev = useRef<boolean[]>(Array(16).fill(false));
   const [ship, setShip] = useState<ShipId>("azure");
   const [diff, setDiff] = useState<DiffId>("normal");
   const [vs, setVs] = useState(false);
@@ -270,11 +351,112 @@ export function VectorFang() {
   }, []);
 
   useEffect(() => {
-    if (screen === "title") {
-      wrapRef.current?.focus();
-      codeRef.current?.focus();
-    }
+    screenRef.current = screen;
+    focusRef.current = 0;
+    if (screen !== "title") setCodeOpen(false);
   }, [screen]);
+
+  useEffect(() => {
+    codeOpenRef.current = codeOpen;
+    focusRef.current = 0;
+  }, [codeOpen]);
+
+  useEffect(() => {
+    listenRef.current = listen;
+    const game = gameRef.current;
+    const slot = listen ? game?.slotFor(listen.player) ?? 0 : 0;
+    const pad = game?.pads?.[slot >= 0 ? slot : 0];
+    listenPrev.current = pad?.buttons ? pad.buttons.slice() : Array(16).fill(false);
+  }, [listen]);
+
+  useEffect(() => {
+    if (!listen || listen.kind !== "keys") return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.code === "Escape") {
+        setListen(null);
+        return;
+      }
+      gameRef.current?.bindAct(listen.player, "keys", listen.act, e.code);
+      setListen(null);
+      bump((n) => n + 1);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [listen]);
+
+  useEffect(() => {
+    const paint = (buttons: HTMLButtonElement[], index: number, on: boolean) => {
+      const target = buttons[index];
+      const all = menuRef.current ? [...menuRef.current.querySelectorAll("button")] : [];
+      for (const b of all) {
+        const mark = on && !!target && b === target;
+        b.style.outline = mark ? "2px solid #f0c14a" : "";
+        b.style.outlineOffset = mark ? "2px" : "";
+      }
+    };
+    const id = window.setInterval(() => {
+      const game = gameRef.current;
+      if (!game) return;
+      setPadOn(game.pad.connected);
+      const sc = screenRef.current;
+      const waiting = listenRef.current;
+      if (waiting?.kind === "pad") {
+        const slot = game.slotFor(waiting.player);
+        const pad = game.pads[slot >= 0 ? slot : 0];
+        if (pad?.connected) {
+          for (let b = 0; b < 16; b++) {
+            if (pad.buttons[b] && !listenPrev.current[b]) {
+              game.bindAct(waiting.player, "pad", waiting.act, b);
+              setListen(null);
+              bump((n) => n + 1);
+              break;
+            }
+          }
+          listenPrev.current = pad.buttons.slice();
+        }
+        game.takePadMenu();
+        return;
+      }
+      if (sc === "play") return;
+      const ev = game.takePadMenu();
+      if (sc === "name") {
+        if (ev.left) game.setNameSlot(game.nameSlot - 1);
+        if (ev.right) game.setNameSlot(game.nameSlot + 1);
+        if (ev.up) game.nudgeName(1);
+        if (ev.down) game.nudgeName(-1);
+        if (ev.confirm || ev.start) game.submitName();
+        return;
+      }
+      if (codeOpenRef.current && sc === "title" && ev.cancel) {
+        if (game.hackBuf) game.typeHack(game.hackBuf.slice(0, -1));
+        else setCodeOpen(false);
+        return;
+      }
+      const root = menuRef.current;
+      if (!root) return;
+      const buttons = [...root.querySelectorAll("button")].filter((b) => !b.disabled);
+      if (!buttons.length) return;
+      let i = Math.min(focusRef.current, buttons.length - 1);
+      if (ev.left) i = movePadFocus(buttons, i, -1, 0);
+      if (ev.right) i = movePadFocus(buttons, i, 1, 0);
+      if (ev.up) i = movePadFocus(buttons, i, 0, -1);
+      if (ev.down) i = movePadFocus(buttons, i, 0, 1);
+      focusRef.current = i;
+      if (ev.start) padStartButton(sc, buttons)?.click();
+      else if (ev.confirm) buttons[i]?.click();
+      else if (ev.cancel) {
+        if (sc === "pause") game.pause();
+        else if (sc === "shop") buttons.find((b) => /exit/i.test(b.textContent || ""))?.click();
+        else if (sc === "how" || sc === "story" || sc === "roster" || sc === "select" || sc === "vsresult") game.goTitle();
+        else if (sc === "controls") game.closeControls();
+      }
+      paint(buttons, focusRef.current, game.pad.connected);
+      if (ev.up || ev.down || ev.left || ev.right) buttons[focusRef.current]?.scrollIntoView({ block: "nearest" });
+    }, 70);
+    return () => window.clearInterval(id);
+  }, []);
 
   const g = () => gameRef.current;
 
@@ -323,7 +505,7 @@ export function VectorFang() {
         />
 
         {screen !== "play" && (
-          <div className="absolute inset-0 flex items-start justify-center overflow-y-auto p-3">
+          <div ref={menuRef} className="absolute inset-0 flex items-start justify-center overflow-y-auto p-3">
             <div
               className={`my-auto w-full max-w-[340px] rounded-md border border-vf-line ${
                 screen === "select"
@@ -333,7 +515,38 @@ export function VectorFang() {
                     : "overflow-hidden bg-vf-panel/92 p-5 backdrop-blur-sm"
               }`}
             >
-              {screen === "title" && (
+              {screen === "title" && codeOpen && (
+                <div className="flex flex-col gap-3 text-center">
+                  <p className="font-mono text-xs tracking-[0.3em] text-vf-gold">SECRET CODE</p>
+                  <p className="font-mono text-lg tracking-[0.45em] text-vf-cyan">{hud.hackBuf.padEnd(8, "·")}</p>
+                  <div className="grid grid-cols-7 gap-1">
+                    {CODE_LETTERS.map((ch) => (
+                      <button
+                        key={ch}
+                        type="button"
+                        className="min-h-9 rounded-sm border border-vf-line bg-vf-bg/80 font-mono text-sm text-vf-ice"
+                        onClick={() => {
+                          const game = g();
+                          game?.typeHack(`${game.hackBuf}${ch}`);
+                        }}
+                      >
+                        {ch}
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button" className="min-h-11 rounded-md border border-vf-line font-mono text-xs" onClick={() => {
+                    const game = g();
+                    game?.typeHack(game.hackBuf.slice(0, -1));
+                  }}>
+                    DELETE
+                  </button>
+                  <button type="button" className="min-h-11 rounded-md border border-vf-cyan font-mono text-xs text-vf-cyan" onClick={() => setCodeOpen(false)}>
+                    BACK
+                  </button>
+                  <p className="font-mono text-[10px] text-vf-mute">D-PAD MOVES · CROSS TYPES · CIRCLE ERASES</p>
+                </div>
+              )}
+              {screen === "title" && !codeOpen && (
                 <div className="flex flex-col gap-4 text-center">
                   <p
                     className="cursor-pointer font-mono text-xs tracking-[0.35em] text-vf-cyan"
@@ -419,6 +632,7 @@ export function VectorFang() {
                       const game = g();
                       if (game) {
                         game.screen = "story";
+                        game.sfx.startContractMusic();
                         game.onChange();
                       }
                     }}
@@ -451,17 +665,35 @@ export function VectorFang() {
                   >
                     HOW TO PLAY
                   </button>
+                  <button
+                    type="button"
+                    className="min-h-11 rounded-md border border-vf-line px-4 py-2 font-mono text-xs text-vf-ice"
+                    onClick={() => setCodeOpen(true)}
+                  >
+                    ENTER CODE
+                  </button>
+                  <button
+                    type="button"
+                    className="flex min-h-11 items-center justify-center gap-2 rounded-md border border-vf-gold px-4 py-2 font-mono text-xs text-vf-gold"
+                    onClick={() => g()?.openControls()}
+                  >
+                    <Gamepad2 size={14} />
+                    <Keyboard size={14} />
+                    CONTROLS
+                  </button>
                   <p className="font-mono text-[11px] text-vf-mute">HI {hud.hi.toString().padStart(8, "0")}</p>
                   <p className="font-mono text-[10px] text-vf-mute">DEMO PLAYS IF YOU WAIT</p>
+                  <p className="font-mono text-[10px] text-vf-gold">{padOn ? "PS4 ON · OPTIONS STARTS" : "PS4 · CLICK ONCE, THEN OPTIONS"}</p>
                 </div>
               )}
 
               {screen === "how" && (
                 <div className="flex flex-col gap-3 font-mono text-sm text-vf-ice">
                   <h2 className="font-display text-lg text-vf-cyan">SORTIE BRIEF</h2>
-                  <p>Move with WASD or arrows. Shot: Space / Z. Bomb: X. Swap drones: C.</p>
+                  <p>Move with WASD, arrows, or a PS4 pad: left stick and D-pad. Options starts. Cross or R2 fires. Circle or R1 is the bomb. Square or L1 is the special. Triangle swaps drones. Options pauses in flight. Share mutes. CONTROLS on the title lets each player pick keyboard, PS4, or both, and rebind every button.</p>
+                  <p>Hi-score letters: D-pad up and down changes the letter, left and right changes the slot, Cross enters. Secret code: ENTER CODE, then the letter grid. Circle deletes.</p>
                   <p>Sortie 01 catapults off the NEXO carrier. Lock 0.55s, 3-2-1 on 0.48s beats (T-minus 2.54s to the shot), ignite 0.55s, then a 2.05s burn down the keel.</p>
-                  <p>Chip tracks swap with the sortie: title fanfare, stage themes, a faster boss loop, and a bright bonus stage. Mute from the HUD if you need silence.</p>
+                  <p>Recorded themes: title, hangar, briefing, one track per sortie, boss, Sky Cathedral, bonus, stage clear, contract, and the ending.</p>
                   <p>LANCE drones fire lasers. SEEK drones home. Overdrive dumps every 6s.</p>
                   <p>Tiny white core is your hitbox. Shells and air units clip it — tanks, ships, and buildings you fly over. Chain air kills onto ground units for multipliers.</p>
                   <p>Each stage ends with a named boss. Watch the warning sting, then break their armor phases.</p>
@@ -629,6 +861,7 @@ export function VectorFang() {
                       const game = g();
                       if (game) {
                         game.screen = "brief";
+                        game.sfx.startBriefMusic();
                         game.onChange();
                       }
                     }}
@@ -903,11 +1136,83 @@ export function VectorFang() {
                 </div>
               )}
 
+              {screen === "controls" && (
+                <div className="flex max-h-[70vh] flex-col gap-3 overflow-y-auto text-center">
+                  <h2 className="font-display text-lg text-vf-gold">CONTROLS</h2>
+                  <p className="font-mono text-[10px] text-vf-mute">Pick a keyboard, a PS4 pad, or both. P2's pad is the second controller.</p>
+                  <div className="grid grid-cols-2 gap-1">
+                    {([1, 2] as const).map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        className={`min-h-11 rounded-sm border font-display text-sm ${who === p ? "border-vf-cyan bg-vf-cyan text-vf-bg" : "border-vf-line text-vf-ice"}`}
+                        onClick={() => setWho(p)}
+                      >
+                        P{p}
+                      </button>
+                    ))}
+                  </div>
+                  <DevicePick
+                    value={(g()?.controls[who === 1 ? "p1" : "p2"]?.device ?? "keys") as Device}
+                    onPick={(d) => {
+                      g()?.setDevice(who, d);
+                      bump((n) => n + 1);
+                    }}
+                  />
+                  <p className="font-mono text-[10px] text-vf-gold">
+                    {who === 2 && g()?.controls.p2.device !== "keys" && !g()?.pads[g()?.slotFor(2) ?? 0]?.connected
+                      ? "WAITING FOR A SECOND PS4 PAD"
+                      : g()?.pads[Math.max(0, g()?.slotFor(who) ?? 0)]?.connected
+                        ? "PS4 CONNECTED"
+                        : "PS4 NOT CONNECTED"}
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {ACTS.map((act) => {
+                      const side = g()?.controls[who === 1 ? "p1" : "p2"];
+                      const arm = listen?.player === who && listen.act === act ? listen.kind : null;
+                      return (
+                        <div key={act} className="grid grid-cols-[72px_1fr_1fr] items-center gap-1">
+                          <span className="text-left font-mono text-[10px] text-vf-mute">{ACT_LABEL[act]}</span>
+                          <button
+                            type="button"
+                            className="flex min-h-10 items-center justify-center gap-1 rounded-sm border border-vf-line font-mono text-[10px]"
+                            onClick={() => setListen({ player: who, kind: "keys", act })}
+                          >
+                            <Keyboard size={12} />
+                            {arm === "keys" ? "KEY…" : keyLabel(side?.keys[act] ?? "")}
+                          </button>
+                          <button
+                            type="button"
+                            className="flex min-h-10 items-center justify-center gap-1 rounded-sm border border-vf-line font-mono text-[10px]"
+                            onClick={() => setListen({ player: who, kind: "pad", act })}
+                          >
+                            <Gamepad2 size={12} />
+                            {arm === "pad" ? "BTN…" : padButtonLabel(side?.pad[act] ?? 0)}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button type="button" className="min-h-11 rounded-md bg-vf-cyan font-display text-sm font-bold text-vf-bg" onClick={() => g()?.closeControls()}>
+                    DONE
+                  </button>
+                </div>
+              )}
+
               {screen === "pause" && (
                 <div className="flex flex-col gap-3 text-center">
                   <h2 className="font-display text-2xl text-vf-gold">PAUSED</h2>
                   <button type="button" className="min-h-11 rounded-md bg-vf-cyan font-display text-sm font-bold text-vf-bg" onClick={() => g()?.pause()}>
                     RESUME
+                  </button>
+                  <button
+                    type="button"
+                    className="flex min-h-11 items-center justify-center gap-2 rounded-md border border-vf-gold font-mono text-xs text-vf-gold"
+                    onClick={() => g()?.openControls()}
+                  >
+                    <Gamepad2 size={14} />
+                    <Keyboard size={14} />
+                    CONTROLS
                   </button>
                   <button
                     type="button"
@@ -952,7 +1257,7 @@ export function VectorFang() {
                 <div className="flex flex-col gap-4 bg-vf-bg p-5 text-center">
                   <p className="font-mono text-xs tracking-[0.3em] text-vf-gold">NEW HI-SCORE</p>
                   <p className="font-display text-2xl text-vf-cyan">{hud.score.toString().padStart(8, "0")}</p>
-                  <p className="font-mono text-[11px] text-vf-mute">Enter three letters</p>
+                  <p className="font-mono text-[11px] text-vf-mute">D-PAD CHANGES THE LETTER · LEFT RIGHT MOVES THE SLOT · CROSS ENTERS</p>
                   <div className="flex justify-center gap-2">
                     {hud.nameChars.map((ch, i) => (
                       <button

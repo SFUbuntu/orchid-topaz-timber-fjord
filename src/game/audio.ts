@@ -10,8 +10,10 @@ export class Sfx {
   lfo: OscillatorNode | null = null;
   titleNodes: AudioNode[] = [];
   titleTimer: number | null = null;
-  song: "off" | "title" | "sortie" | "dune" | "tide" | "crown" | "boss" | "bonus" = "off";
-  gen = 0;
+  song = "off";
+  trackGen = 0;
+  musicSrc: AudioBufferSourceNode | null = null;
+  buffers = new Map<string, Promise<AudioBuffer>>();
   noiseBuf: AudioBuffer | null = null;
   visBound = false;
 
@@ -23,7 +25,7 @@ export class Sfx {
       this.music = this.ctx.createGain();
       this.sfx = this.ctx.createGain();
       this.master.gain.value = 0.55;
-      this.music.gain.value = 0.2;
+      this.music.gain.value = 0.55;
       this.sfx.gain.value = 0.28;
       this.music.connect(this.master);
       this.sfx.connect(this.master);
@@ -40,6 +42,7 @@ export class Sfx {
         if (document.visibilityState === "visible" && this.ctx?.state === "suspended") void this.ctx.resume();
       });
     }
+    void this.loadTrack("title").catch(() => {});
   }
 
   setMuted(m: boolean) {
@@ -128,146 +131,99 @@ export class Sfx {
     this.beep(980, 0.09, "square", 0.16, 220);
   }
 
-  midiHz(m: number) {
-    return 440 * 2 ** ((m - 69) / 12);
+  loadTrack(id: string) {
+    const url = TRACKS[id];
+    if (!url || !this.ctx) return Promise.reject(new Error("no track"));
+    const hit = this.buffers.get(id);
+    if (hit) return hit;
+    const ctx = this.ctx;
+    const job = fetch(url)
+      .then((r) => {
+        if (!r.ok) throw new Error(url);
+        return r.arrayBuffer();
+      })
+      .then((buf) => ctx.decodeAudioData(buf.slice(0)));
+    this.buffers.set(id, job);
+    job.catch(() => this.buffers.delete(id));
+    return job;
   }
 
-  tone(freq: number, when: number, dur: number, type: OscillatorType, vol: number) {
-    if (!this.ctx || !this.music || !freq) return;
-    const o = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    o.type = type;
-    o.frequency.value = freq;
-    g.gain.setValueAtTime(0.0001, when);
-    g.gain.exponentialRampToValueAtTime(vol, when + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
-    o.connect(g);
-    g.connect(this.music);
-    o.start(when);
-    o.stop(when + dur + 0.02);
-    o.onended = () => {
-      o.disconnect();
-      g.disconnect();
-    };
-  }
-
-  hat(when: number, vol = 0.045) {
-    if (!this.ctx || !this.music || !this.noiseBuf) return;
-    const src = this.ctx.createBufferSource();
-    src.buffer = this.noiseBuf;
-    const f = this.ctx.createBiquadFilter();
-    f.type = "highpass";
-    f.frequency.value = 2400;
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(vol, when);
-    g.gain.exponentialRampToValueAtTime(0.0001, when + 0.06);
-    src.connect(f);
-    f.connect(g);
-    g.connect(this.music);
-    src.start(when);
-    src.stop(when + 0.08);
-  }
-
-  kick(when: number) {
-    if (!this.ctx || !this.music) return;
-    const o = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    o.type = "sine";
-    o.frequency.setValueAtTime(148, when);
-    o.frequency.exponentialRampToValueAtTime(46, when + 0.1);
-    g.gain.setValueAtTime(0.28, when);
-    g.gain.exponentialRampToValueAtTime(0.001, when + 0.14);
-    o.connect(g);
-    g.connect(this.music);
-    o.start(when);
-    o.stop(when + 0.16);
-    o.onended = () => {
-      o.disconnect();
-      g.disconnect();
-    };
-  }
-
-  snare(when: number) {
-    if (!this.ctx || !this.music || !this.noiseBuf) return;
-    const src = this.ctx.createBufferSource();
-    src.buffer = this.noiseBuf;
-    const f = this.ctx.createBiquadFilter();
-    f.type = "bandpass";
-    f.frequency.value = 1800;
-    f.Q.value = 0.8;
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0.16, when);
-    g.gain.exponentialRampToValueAtTime(0.0001, when + 0.12);
-    src.connect(f);
-    f.connect(g);
-    g.connect(this.music);
-    src.start(when);
-    src.stop(when + 0.14);
-    this.tone(220, when, 0.06, "triangle", 0.06);
-  }
-
-  scheduleTune(name: Sfx["song"], tune: ChipTune) {
+  playTrack(id: string) {
     this.unlock();
-    if (this.song === name) return;
+    if (!id || !TRACKS[id]) return;
+    if (this.song === id) return;
     this.stopMusic();
     if (!this.ctx || !this.music) return;
-    this.song = name;
-    const token = this.gen;
-    const steps = Math.max(tune.bass.length, tune.lead.length, 16);
-    const step = 60 / tune.bpm / 4;
-    const loop = () => {
-      if (this.gen !== token || !this.ctx) return;
-      if (!this.muted) {
-        const t0 = this.ctx.currentTime + 0.04;
-        for (let i = 0; i < steps; i++) {
-          const t = t0 + i * step;
-          const b = tune.bass[i % tune.bass.length];
-          if (b) {
-            this.tone(this.midiHz(b), t, step * 1.55, "triangle", 0.2);
-            this.tone(this.midiHz(b) * 0.5, t, step * 1.55, "sine", 0.07);
-          }
-          const a = tune.arp[i % tune.arp.length];
-          if (a) this.tone(this.midiHz(a), t, step * 0.4, "square", 0.042);
-          const l = tune.lead[i % tune.lead.length];
-          if (l) {
-            this.tone(this.midiHz(l), t, step * 0.7, "square", 0.095);
-            this.tone(this.midiHz(l) * 1.004, t, step * 0.7, "square", 0.04);
-          }
-          if (tune.kick[i % tune.kick.length] === "x") this.kick(t);
-          if (tune.snare[i % tune.snare.length] === "x") this.snare(t);
-          if (tune.hat[i % tune.hat.length] === "x") this.hat(t, i % 4 === 0 ? 0.05 : 0.026);
-        }
-      }
-      this.titleTimer = window.setTimeout(loop, steps * step * 1000 - 28);
-    };
-    loop();
+    this.song = id;
+    const token = this.trackGen;
+    void this.loadTrack(id).then((buf) => {
+      if (this.trackGen !== token || !this.ctx || !this.music) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      src.connect(this.music);
+      src.start();
+      this.musicSrc = src;
+      src.onended = () => {
+        if (this.musicSrc === src) this.musicSrc = null;
+      };
+    }).catch(() => {
+      if (this.trackGen === token) this.song = "off";
+    });
   }
 
   startTitleMusic() {
-    this.scheduleTune("title", TUNES.title);
+    this.playTrack("title");
+  }
+
+  startHangarMusic() {
+    this.playTrack("hangar");
+  }
+
+  startBriefMusic() {
+    this.playTrack("brief");
+  }
+
+  startContractMusic() {
+    this.playTrack("contract");
+  }
+
+  startClearMusic() {
+    this.playTrack("clear");
+  }
+
+  startEndingMusic() {
+    this.playTrack("ending");
   }
 
   startMusic(stage: number) {
     this.stage = stage;
-    const key = stage <= 2 ? "sortie" : stage <= 5 ? "dune" : stage <= 7 ? "tide" : "crown";
-    this.scheduleTune(key, TUNES[key]);
+    const n = Math.max(0, Math.min(9, stage | 0));
+    this.playTrack("stage-" + String(n + 1).padStart(2, "0"));
   }
 
-  startBossMusic() {
-    this.scheduleTune("boss", TUNES.boss);
+  startBossMusic(stage = 0) {
+    this.playTrack(stage >= 9 ? "final" : "boss");
   }
 
   startBonusMusic() {
-    this.scheduleTune("bonus", TUNES.bonus);
+    this.playTrack("bonus");
   }
 
   stopMusic() {
     this.song = "off";
-    this.gen += 1;
+    this.trackGen += 1;
     if (this.titleTimer != null) {
       clearTimeout(this.titleTimer);
       this.titleTimer = null;
     }
+    try {
+      this.musicSrc?.stop();
+    } catch {
+      /* already stopped */
+    }
+    this.musicSrc?.disconnect();
+    this.musicSrc = null;
     try {
       this.osc?.stop();
       this.lfo?.stop();
@@ -281,78 +237,24 @@ export class Sfx {
   }
 }
 
-type ChipTune = {
-  bpm: number;
-  bass: number[];
-  arp: number[];
-  lead: number[];
-  kick: string;
-  snare: string;
-  hat: string;
-};
-
-const TUNES: Record<"title" | "sortie" | "dune" | "tide" | "crown" | "boss" | "bonus", ChipTune> = {
-  title: {
-    bpm: 150,
-    bass: [45, 0, 45, 0, 40, 0, 43, 0, 45, 0, 47, 0, 40, 0, 43, 0, 38, 0, 38, 0, 40, 0, 42, 0, 43, 0, 45, 0, 40, 0, 43, 0],
-    arp: [69, 72, 76, 72, 69, 67, 64, 67, 69, 72, 76, 79, 76, 72, 69, 67, 64, 67, 69, 72, 76, 72, 69, 64, 62, 0, 64, 67, 69, 67, 64, 62],
-    lead: [76, 0, 79, 76, 81, 79, 76, 72, 76, 0, 79, 83, 81, 79, 76, 74, 72, 74, 76, 0, 79, 76, 72, 69, 67, 0, 69, 72, 74, 72, 69, 67],
-    kick: "x...x...x...x.x.",
-    snare: "....x.......x...",
-    hat: "x.x.x.x.x.x.x.x."
-  },
-  sortie: {
-    bpm: 140,
-    bass: [50, 50, 0, 50, 45, 45, 0, 48, 50, 50, 53, 55, 57, 0, 55, 53, 50, 50, 0, 50, 48, 48, 0, 43, 45, 45, 48, 50, 53, 0, 50, 48],
-    arp: [0, 69, 0, 72, 0, 74, 0, 72, 0, 69, 0, 65, 0, 69, 0, 72, 0, 65, 0, 69, 0, 72, 0, 69, 0, 62, 0, 65, 0, 69, 0, 65],
-    lead: [74, 0, 77, 81, 79, 77, 74, 0, 72, 74, 77, 0, 79, 77, 74, 72, 69, 0, 72, 74, 77, 0, 74, 72, 65, 69, 72, 74, 72, 69, 65, 62],
-    kick: "x...x...x...x.x.",
-    snare: "....x.......x...",
-    hat: "x.x.x.x.x.x.x.xx"
-  },
-  dune: {
-    bpm: 132,
-    bass: [42, 42, 0, 42, 49, 49, 0, 47, 42, 42, 45, 47, 49, 0, 47, 45, 54, 54, 0, 52, 49, 49, 0, 47, 42, 42, 40, 42, 45, 0, 42, 40],
-    arp: [0, 66, 0, 69, 0, 73, 0, 69, 0, 66, 0, 61, 0, 66, 0, 69, 0, 61, 0, 66, 0, 69, 0, 66, 0, 54, 0, 61, 0, 66, 0, 61],
-    lead: [66, 0, 69, 73, 71, 69, 66, 0, 61, 66, 69, 0, 73, 71, 69, 66, 64, 0, 66, 69, 73, 0, 69, 66, 61, 64, 66, 69, 66, 64, 61, 54],
-    kick: "x...x...x...x...",
-    snare: "....x.......x...",
-    hat: "x.x.x.x.x.x.x.x."
-  },
-  tide: {
-    bpm: 126,
-    bass: [45, 0, 45, 52, 45, 0, 48, 52, 43, 0, 43, 50, 43, 0, 47, 50, 41, 0, 41, 48, 41, 0, 45, 48, 43, 0, 43, 50, 45, 0, 48, 52],
-    arp: [0, 69, 0, 72, 0, 76, 0, 72, 0, 67, 0, 69, 0, 72, 0, 69, 0, 64, 0, 67, 0, 69, 0, 64, 0, 67, 0, 69, 0, 72, 0, 69],
-    lead: [69, 72, 76, 0, 79, 76, 72, 69, 67, 64, 67, 69, 72, 69, 64, 60, 69, 0, 72, 76, 74, 72, 69, 0, 64, 67, 69, 72, 69, 64, 60, 57],
-    kick: "x...x.x.x...x...",
-    snare: "....x.......x...",
-    hat: "x.x.x.x.x.x.x.x."
-  },
-  crown: {
-    bpm: 118,
-    bass: [43, 43, 43, 0, 50, 50, 0, 46, 43, 43, 46, 48, 50, 0, 48, 46, 39, 39, 39, 0, 46, 46, 0, 43, 41, 41, 43, 46, 48, 0, 46, 43],
-    arp: [0, 58, 0, 62, 0, 67, 0, 62, 0, 58, 0, 55, 0, 58, 0, 62, 0, 55, 0, 58, 0, 62, 0, 58, 0, 51, 0, 55, 0, 58, 0, 55],
-    lead: [70, 0, 67, 70, 74, 0, 70, 67, 65, 0, 67, 70, 74, 77, 74, 70, 67, 0, 70, 74, 72, 70, 67, 65, 62, 65, 67, 70, 67, 62, 58, 55],
-    kick: "x.....x.x.......",
-    snare: "........x.......",
-    hat: "x...x...x...x.x."
-  },
-  boss: {
-    bpm: 168,
-    bass: [40, 40, 40, 40, 43, 43, 40, 38, 40, 40, 47, 43, 40, 38, 36, 38, 40, 40, 40, 43, 47, 47, 43, 40, 38, 38, 36, 38, 40, 43, 40, 38],
-    arp: [67, 71, 76, 71, 67, 64, 67, 71, 76, 79, 76, 71, 67, 64, 59, 64, 67, 71, 76, 79, 83, 79, 76, 71, 67, 64, 59, 64, 67, 71, 67, 64],
-    lead: [76, 79, 83, 79, 76, 0, 71, 76, 79, 83, 86, 83, 79, 76, 71, 67, 76, 0, 79, 83, 88, 86, 83, 79, 76, 71, 67, 71, 76, 79, 76, 71],
-    kick: "x.x.x.x.x.x.x.x.",
-    snare: "..x...x...x...x.",
-    hat: "xxxxxxxxxxxxxxxx"
-  },
-  bonus: {
-    bpm: 160,
-    bass: [48, 48, 0, 48, 55, 55, 0, 52, 48, 48, 52, 55, 60, 0, 55, 52, 53, 53, 0, 53, 50, 50, 0, 47, 48, 48, 52, 55, 60, 0, 55, 52],
-    arp: [0, 72, 0, 76, 0, 79, 0, 76, 0, 72, 0, 67, 0, 72, 0, 76, 0, 71, 0, 72, 0, 76, 0, 72, 0, 67, 0, 64, 0, 67, 0, 72],
-    lead: [72, 76, 79, 84, 79, 76, 72, 0, 71, 72, 76, 79, 76, 72, 67, 64, 72, 0, 76, 79, 84, 83, 79, 76, 72, 67, 64, 67, 72, 76, 72, 67],
-    kick: "x...x...x...x.x.",
-    snare: "....x.......x...",
-    hat: "x.x.x.x.x.x.x.xx"
-  }
+const TRACKS: Record<string, string> = {
+  title: "/music/title.mp3",
+  hangar: "/music/hangar.mp3",
+  brief: "/music/briefing.mp3",
+  contract: "/music/contract.mp3",
+  clear: "/music/stage-clear.mp3",
+  bonus: "/music/bonus.mp3",
+  boss: "/music/boss.mp3",
+  final: "/music/final-boss.mp3",
+  ending: "/music/ending.mp3",
+  "stage-01": "/music/stage-01.mp3",
+  "stage-02": "/music/stage-02.mp3",
+  "stage-03": "/music/stage-03.mp3",
+  "stage-04": "/music/stage-04.mp3",
+  "stage-05": "/music/stage-05.mp3",
+  "stage-06": "/music/stage-06.mp3",
+  "stage-07": "/music/stage-07.mp3",
+  "stage-08": "/music/stage-08.mp3",
+  "stage-09": "/music/stage-09.mp3",
+  "stage-10": "/music/stage-10.mp3"
 };

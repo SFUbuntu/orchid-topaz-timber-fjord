@@ -1,0 +1,6 @@
+attachments
+screenshots
+artifacts
+**/*.wav
+**/*.zip
+node_modules
