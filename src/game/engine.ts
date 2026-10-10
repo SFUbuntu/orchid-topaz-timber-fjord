@@ -88,11 +88,14 @@ export type Screen =
   | "ending"
   | "thanks"
   | "vsresult"
-  | "controls";
+  | "controls"
+  | "psa";
 
 export type ClearReport = {
   stage: number;
   last: boolean;
+  loopNext: boolean;
+  apexNext: boolean;
   score: number;
   hi: number;
   bounty: number;
@@ -189,6 +192,7 @@ export function launchPhaseAge(elapsed: number) {
 
 
 const HS_KEY = "vectorfang-hs-v1";
+const COIN_KEY = "vectorfang-credits";
 export const STAGES = [
 	"FORWARD BASE",
 	"STORM FRONT",
@@ -307,7 +311,16 @@ var SUB_BOSS = {
 	restY: 112,
 	weak: "The snorkel. Then the magazine."
 };
-var BOSS_KINDS = new Set([...BOSS_META.map((b) => b.kind), SUB_BOSS.kind]);
+var APEX_META = {
+	kind: "vectorhead",
+	name: "NULL CROWN",
+	hp: 260,
+	r: 46,
+	score: 12000,
+	restY: 118,
+	weak: "The eyes. Then the mouth. Kill what it spits."
+};
+var BOSS_KINDS = new Set([...BOSS_META.map((b) => b.kind), SUB_BOSS.kind, "vectorhead"]);
 export function isBossKind(k) {
 	return BOSS_KINDS.has(k);
 }
@@ -417,6 +430,9 @@ export class VectorFangGame {
 		mx: 0,
 		my: 0,
 		moving: false,
+		drag: false,
+		tx: 180,
+		ty: 520,
 		fire: false,
 		bomb: false,
 		mode: false,
@@ -439,7 +455,8 @@ export class VectorFangGame {
 		right: false,
 		confirm: false,
 		cancel: false,
-		start: false
+		start: false,
+		coin: false
 	};
 	padInject = null;
 	padInject2 = null;
@@ -495,7 +512,10 @@ export class VectorFangGame {
 	crew: CrewMode = "solo";
 	p2Ship: ShipId = "crimson";
 	hack = false;
+	hackHold = 0;
 	hackBuf = "";
+	credits = 0;
+	psaT = 0;
 	arcadeTaps = 0;
 	arcadeTapAt = 0;
 	p2invuln = 0;
@@ -515,12 +535,15 @@ export class VectorFangGame {
 	bonusBanner = 0;
 	bonusSting = 0;
 	bonusPerfect = false;
+	cycle = 0;
+	apex = false;
 	constructor(canvas) {
 		this.canvas = canvas;
 		const ctx = canvas.getContext("2d");
 		if (!ctx) throw new Error("No 2D context");
 		this.ctx = ctx;
 		this.hi = Number(localStorage.getItem(HS_KEY) || 0);
+		this.credits = Math.max(0, Math.min(9, Number(localStorage.getItem(COIN_KEY) || 0)));
 		this.hiTable = loadTable();
 		if (this.hiTable[0]) this.hi = Math.max(this.hi, this.hiTable[0].score);
 		this.loadSprites();
@@ -555,6 +578,10 @@ export class VectorFangGame {
 			if (this.screen === "name") this.handleNameKey(e.code);
 			if (this.screen === "intro" && (e.code === "Space" || e.code === "Enter")) this.dismissIntro();
 			if (this.screen === "thanks" && (e.code === "Space" || e.code === "Enter")) this.dismissThanks();
+			if ((e.code === "Digit5" || e.code === "Numpad5") && !e.repeat && (this.screen === "title" || this.screen === "psa" || this.screen === "over" || this.screen === "vsresult" || this.screen === "ending" || this.screen === "win")) {
+				e.preventDefault();
+				this.insertCoin();
+			} else if (this.screen === "psa" && !e.repeat) this.leavePsa();
 		};
 		const onUp = (e) => this.keys.delete(e.code);
 		window.addEventListener("keydown", onDown);
@@ -928,6 +955,8 @@ export class VectorFangGame {
 		this.mode = "lance";
 		this.overdrive = 0;
 		this.stage = 0;
+		this.cycle = 0;
+		this.apex = false;
 		this.ending = "none";
 		this.continues = 0;
 		this.continueT = 0;
@@ -1101,6 +1130,48 @@ export class VectorFangGame {
 		this.onChange();
 		this.sfx.startTitleMusic();
 	}
+	insertCoin() {
+		if (this.screen !== "title" && this.screen !== "psa" && this.screen !== "over" && this.screen !== "vsresult" && this.screen !== "ending" && this.screen !== "win") return;
+		this.unlock();
+		this.credits = Math.min(9, this.credits + 1);
+		localStorage.setItem(COIN_KEY, String(this.credits));
+		this.idleT = 0;
+		this.sfx.coin();
+		this.onChange();
+	}
+	spendCredit() {
+		if (this.credits < 1) {
+			this.onChange();
+			return false;
+		}
+		this.credits -= 1;
+		localStorage.setItem(COIN_KEY, String(this.credits));
+		return true;
+	}
+	cabinetStart(vs = false) {
+		if (!this.spendCredit()) return;
+		this.openSelect(vs);
+	}
+	retryCabinet() {
+		if (this.hack) {
+			this.startHack();
+			return;
+		}
+		if (!this.spendCredit()) return;
+		this.launchCampaign();
+	}
+	retryVs() {
+		if (!this.spendCredit()) return;
+		this.launchVs();
+	}
+	leavePsa() {
+		if (this.screen !== "psa") return;
+		this.psaT = 0;
+		this.idleT = 0;
+		this.screen = "title";
+		this.onChange();
+		this.sfx.startTitleMusic();
+	}
 	openSelect(vs = false) {
 		this.unlock();
 		this.demo = false;
@@ -1197,7 +1268,9 @@ export class VectorFangGame {
 		}));
 		return {
 			stage: this.stage,
-			last: this.stage >= 9,
+			last: this.apex,
+			loopNext: !this.apex && this.stage >= 9 && this.cycle === 0,
+			apexNext: !this.apex && this.stage >= 9 && this.cycle >= 1,
 			score: this.score,
 			hi: Math.max(this.hi, this.score),
 			bounty: bountyOf(this.score) + refund,
@@ -1228,9 +1301,18 @@ export class VectorFangGame {
 			return;
 		}
 		if (this.hack) {
-			if (this.stage >= 9) {
-				this.ending = bountyOf(this.score) >= 1e6 ? "both" : "served";
+			if (this.apex) {
+				this.ending = "true";
 				this.finishRun("thanks");
+			} else if (this.stage >= 9 && this.cycle === 0) {
+				this.cycle = 1;
+				this.stage = 0;
+				this.beginStage();
+				this.screen = "play";
+				this.sfx.startMusic(0);
+				this.onChange();
+			} else if (this.stage >= 9) {
+				this.startApex(true);
 			} else if (this.stage === 1 || this.stage === 4 || this.stage === 7) this.startBonus();
 			else {
 				this.stage += 1;
@@ -1263,9 +1345,23 @@ export class VectorFangGame {
 	}
 	continueFromClear() {
 		if (!this.clearReport) return;
-		if (this.clearReport.last) {
-			this.ending = bountyOf(this.score) >= 1e6 ? "both" : "served";
+		if (this.apex || this.clearReport.last) {
+			this.ending = "true";
 			this.finishRun("thanks");
+			return;
+		}
+		if (this.stage >= 9 && this.cycle === 0) {
+			this.cycle = 1;
+			this.stage = 0;
+			this.pendingBonus = false;
+			this.sfx.startBriefMusic();
+			this.beginStage();
+			this.screen = "brief";
+			this.onChange();
+			return;
+		}
+		if (this.stage >= 9) {
+			this.startApex(false);
 			return;
 		}
 		if (this.pendingBonus) {
@@ -1277,6 +1373,20 @@ export class VectorFangGame {
 		this.sfx.startBriefMusic();
 		this.beginStage();
 		this.screen = "brief";
+		this.onChange();
+	}
+	startApex(playNow) {
+		this.apex = true;
+		this.bonus = false;
+		this.pendingBonus = false;
+		this.beginStage();
+		if (playNow) {
+			this.screen = "play";
+			this.sfx.startMusic(9);
+		} else {
+			this.screen = "brief";
+			this.sfx.startBriefMusic();
+		}
 		this.onChange();
 	}
 	cashOut() {
@@ -1298,7 +1408,9 @@ export class VectorFangGame {
 		this.ending = "mia";
 		this.saveHi();
 		if (this.hack) {
-			this.finishRun("over");
+			this.screen = "continue";
+			if (this.canContinue()) this.doContinue();
+			else this.finishRun("over");
 			return;
 		}
 		this.continueT = 8.99;
@@ -1333,6 +1445,13 @@ export class VectorFangGame {
 		if (next === "thanks") this.sfx.startEndingMusic();
 		else if (next === "over") this.sfx.startTitleMusic();
 		if (qualifies(this.score, this.hiTable)) {
+			if (this.hack) {
+				this.nameChars = ["C", "P", "U"];
+				this.nameSlot = 0;
+				this.submitName();
+				if (next === "thanks") this.hackHold = 5;
+				return;
+			}
 			this.nameChars = [
 				"A",
 				"A",
@@ -1340,7 +1459,10 @@ export class VectorFangGame {
 			];
 			this.nameSlot = 0;
 			this.screen = "name";
-		} else this.screen = next;
+		} else {
+			this.screen = next;
+			if (this.hack && next === "thanks") this.hackHold = 5;
+		}
 		this.onChange();
 	}
 	handleNameKey(code) {
@@ -1404,7 +1526,7 @@ export class VectorFangGame {
 		this.applyLoadout();
 		this.bg = 0;
 		this.fluidBg = 0;
-		this.launchT = this.stage === 0 && !this.vs && !this.hack && !this.demo ? LAUNCH_DUR : 0;
+		this.launchT = this.stage === 0 && this.cycle === 0 && !this.apex && !this.vs && !this.hack && !this.demo ? LAUNCH_DUR : 0;
 		this.launchBark = "";
 		if (this.launchT > 0) {
 			this.px = 180;
@@ -1753,6 +1875,7 @@ export class VectorFangGame {
 		}
 		if (edge(0)) this.padLatch.confirm = true;
 		if (edge(1)) this.padLatch.cancel = true;
+		if (edge(4) && (this.screen === "title" || this.screen === "psa" || this.screen === "over" || this.screen === "vsresult" || this.screen === "ending" || this.screen === "win")) this.padLatch.coin = true;
 		if (edge(8) && (this.screen === "play" || this.screen === "pause")) this.toggleMute();
 		const pauseEdge = (this.screen === "play" || this.screen === "pause") && [0, 1].some((slot) => {
 			const pad = pads[slot];
@@ -1784,6 +1907,7 @@ export class VectorFangGame {
 		this.padLatch.confirm = false;
 		this.padLatch.cancel = false;
 		this.padLatch.start = false;
+		this.padLatch.coin = false;
 		return ev;
 	}
 	loop = (t) => {
@@ -1806,6 +1930,19 @@ export class VectorFangGame {
 			if (this.screen === "continue") {
 				this.continueT -= step;
 				if (this.continueT <= 0) this.finishRun("over");
+			}
+			if (this.screen === "psa") {
+				this.psaT -= step;
+				if (this.psaT <= 0) this.leavePsa();
+			}
+			if (this.hack && (this.screen === "thanks" || this.screen === "ending")) {
+				this.hackHold -= step;
+				if (this.hackHold <= 0) {
+					if (this.screen === "thanks") {
+						this.dismissThanks();
+						this.hackHold = 24;
+					} else this.goTitle();
+				}
 			}
 			this.acc -= step;
 		}
@@ -1859,13 +1996,18 @@ export class VectorFangGame {
 			mark: false,
 			wy: undefined
 		}, partial, { alive: true });
-		e.hp = Math.max(1, Math.ceil(e.hp * this.diffOf().hp));
+		e.hp = Math.max(1, Math.ceil(e.hp * this.diffOf().hp * (this.cycle > 0 ? 1.38 : 1) * (this.cycle > 0 && isBossKind(e.kind) ? 1.55 : 1)));
 		e.maxHp = e.hp;
+		if (this.cycle > 0) e.vy *= 1.16;
 		return e;
 	}
 	seedTerrain() {
 		this.decor.forEach((d) => d.alive = false);
 		this.grounds.forEach((g) => g.alive = false);
+		if (this.apex) {
+			this.map = generateStageMap(0);
+			return;
+		}
 		this.map = generateStageMap(this.stage);
 		const theme = STAGE_THEME[this.stage] ?? STAGE_THEME[0];
 		const seed = this.stage * 97 + 13;
@@ -2260,12 +2402,23 @@ export class VectorFangGame {
 		if (this.demo) {
 			this.demoT -= dt;
 			if (this.demoT <= 0) {
-				this.abortDemo();
+				this.demo = false;
+				this.demoT = 0;
+				this.invuln = 0;
+				this.sfx.stopMusic();
+				this.screen = "psa";
+				this.psaT = 7.5;
+				this.onChange();
 				return;
 			}
 			this.steerAuto(dt, true);
 		} else if (this.hack) this.steerAuto(dt, true);
 		else {
+			if (this.touch.drag) {
+				this.px = Math.max(12, Math.min(348, this.touch.tx));
+				this.py = Math.max(24, Math.min(616, this.touch.ty));
+				this.qaSpeed = this.speed;
+			} else {
 			const duo = this.crew === "duo" && !this.vs;
 			let mx = 0, my = 0;
 			const m1 = this.moveVec(1);
@@ -2303,6 +2456,7 @@ export class VectorFangGame {
 				this.cx = Math.max(12, Math.min(348, this.cx));
 				this.cy = Math.max(24, Math.min(616, this.cy));
 			}
+			}
 		}
 		if (this.launchT > 0) this.tickLaunch(dt);
 		this.fireCd -= dt;
@@ -2331,7 +2485,7 @@ export class VectorFangGame {
 			}
 		}
 		const canShoot = this.launchT <= 0 || this.launchPhase() === "shot" || this.launchPhase() === "lift";
-		if (canShoot && (this.demo || this.hack || this.actionDown(1, "fire") || this.touch.fire) && this.fireCd <= 0) this.fire();
+		if (canShoot && (this.demo || this.hack || this.actionDown(1, "fire") || this.touch.fire || this.touch.drag) && this.fireCd <= 0) this.fire();
 		if (!this.demo && !this.hack && (this.actionDown(1, "special") || this.touch.special) && this.specialCd <= 0) this.fireSpecial();
 		if (!this.demo && !this.hack && (this.actionDown(1, "bomb") || this.touch.bomb) && this.bombCd <= 0) this.doBomb();
 		const modeNow = this.actionDown(1, "mode") || this.touch.mode || (this.crew === "duo" && !this.vs && this.actionDown(2, "mode"));
@@ -2345,9 +2499,10 @@ export class VectorFangGame {
 		if (this.vs || this.crew === "wingman") this.updateCpu(dt);
 		if (this.hack && this.bombCd <= 0) {
 			let near = 0;
-			for (const b of this.eBullets) if (b.alive && Math.hypot(b.x - this.px, b.y - this.py) < 42) near += 1;
-			if (near >= 6) this.doBomb();
+			for (const b of this.eBullets) if (b.alive && Math.hypot(b.x - this.px, b.y - this.py) < 58) near += 1;
+			if (near >= 4 || (this.lives <= 1 && near >= 2)) this.doBomb();
 		}
+		if (this.hack && this.bossAlive && this.specialCd <= 0) this.fireSpecial();
 		this.updateDrones(dt);
 		this.updateTerrain(dt);
 		this.spawnWaves();
@@ -2520,35 +2675,93 @@ export class VectorFangGame {
 		let x = isPlayer ? this.px : this.cx;
 		let y = isPlayer ? this.py : this.cy;
 		const speed = isPlayer ? this.speed : 176;
-		let dx = 0;
-		let dy = 0;
-		let threat = 1e9;
+		let ax = 0;
+		let ay = 0;
+		const look = .48;
 		for (const b of this.eBullets) {
-			if (!b.alive) continue;
-			const d = Math.hypot(b.x - x, b.y - y);
-			if (d < 88 && d < threat) {
-				threat = d;
-				dx = x - b.x;
-				dy = y - b.y;
+			if (!b.alive || b.friendly) continue;
+			const vx = b.vx || 0;
+			const vy = b.vy || 0;
+			const fx = b.x + vx * look;
+			const fy = b.y + vy * look;
+			const dNow = Math.hypot(x - b.x, y - b.y);
+			const dFut = Math.hypot(x - fx, y - fy);
+			const d = Math.min(dNow, dFut);
+			if (d > 120) continue;
+			const push = (120 - d) / 120;
+			let sx = -vy;
+			let sy = vx;
+			const sm = Math.hypot(sx, sy);
+			if (sm < 12) {
+				sx = x - b.x || 1;
+				sy = y - b.y;
+			}
+			const nm = Math.hypot(sx, sy) || 1;
+			sx /= nm;
+			sy /= nm;
+			if (sx * (x - b.x) + sy * (y - b.y) < 0) {
+				sx = -sx;
+				sy = -sy;
+			}
+			ax += sx * push;
+			ay += sy * push * .9;
+			if (dNow < 34) {
+				ax += (x - b.x) / (dNow || 1) * 1.6;
+				ay += (y - b.y) / (dNow || 1) * 1.2;
 			}
 		}
-		if (threat < 88) {
-			const mag = Math.hypot(dx, dy) || 1;
-			x += dx / mag * speed * dt;
-			y += dy / mag * speed * .55 * dt;
+		for (const e of this.enemies) {
+			if (!e.alive || isBossKind(e.kind)) continue;
+			const d = Math.hypot(e.x - x, e.y - y);
+			if (d < 52) {
+				ax += (x - e.x) / (d || 1);
+				ay += (y - e.y) / (d || 1) * .45;
+			}
+		}
+		const panic = Math.hypot(ax, ay);
+		if (panic > .28) {
+			x += ax / panic * speed * dt;
+			y += ay / panic * speed * dt;
 		} else {
-			const tgt = this.nearestEnemy(x, y);
-			const weave = Math.sin(this.stageT * 1.35 + (isPlayer ? 0 : 1.8)) * 86;
-			const tx = tgt ? tgt.x + weave * .25 : 180 + weave;
-			const ty = 544 + Math.sin(this.stageT * .9 + (isPlayer ? 0 : 2)) * 18;
-			const ax = tx - x;
-			const ay = ty - y;
-			const mag = Math.hypot(ax, ay) || 1;
-			x += ax / mag * speed * .72 * dt;
-			y += ay / mag * speed * .42 * dt;
+			const home = 180 + Math.sin(this.stageT * .65 + (isPlayer ? 0 : 1.7)) * 48;
+			let bestX = home;
+			let best = 1e9;
+			for (let lane = 32; lane <= 328; lane += 24) {
+				let cost = Math.abs(lane - home) * .015;
+				for (const b of this.eBullets) {
+					if (!b.alive) continue;
+					const fy = b.y + (b.vy || 0) * .55;
+					if (fy < y - 40 || b.y > y + 30) continue;
+					const gap = Math.abs((b.x + (b.vx || 0) * .3) - lane);
+					if (gap < 28) cost += (28 - gap) * 4;
+				}
+				if (cost < best) {
+					best = cost;
+					bestX = lane;
+				}
+			}
+			let tx = bestX;
+			let ty = 508 + Math.sin(this.stageT * .85) * 28;
+			if (isPlayer) {
+				let bestD = 120;
+				for (const it of this.items) {
+					if (!it.alive || it.hide) continue;
+					const d = Math.hypot(it.x - x, it.y - y);
+					if (d < bestD && it.y > 70 && it.y < 620) {
+						bestD = d;
+						tx = it.x;
+						ty = it.y;
+					}
+				}
+			}
+			const mx = tx - x;
+			const my = ty - y;
+			const mag = Math.hypot(mx, my) || 1;
+			x += mx / mag * speed * .82 * dt;
+			y += my / mag * speed * .62 * dt;
 		}
 		x = Math.max(16, Math.min(344, x));
-		y = Math.max(40, Math.min(612, y));
+		y = Math.max(48, Math.min(608, y));
 		if (isPlayer) {
 			const mx = x - this.px;
 			this.px = x;
@@ -2780,6 +2993,10 @@ export class VectorFangGame {
 		}
 	}
 	spawnWaves() {
+		if (this.apex) {
+			this.spawnApexEncounter();
+			return;
+		}
 		if (this.bonus) {
 			this.spawnBonusWaves();
 			return;
@@ -2787,7 +3004,8 @@ export class VectorFangGame {
 		if (this.launchT > 0) return;
 		const st = this.stage;
 		const t = this.stageT;
-		const tick = Math.floor(t * 2 * this.diffOf().dens);
+		const dens = this.diffOf().dens * (this.cycle > 0 ? 1.25 : 1);
+		const tick = Math.floor(t * 2 * dens);
 		if (tick === this.spawnI) return;
 		this.spawnI = tick;
 		const lane = () => 30 + Math.random() * 300;
@@ -3071,8 +3289,19 @@ export class VectorFangGame {
 			this.finishBonus();
 		}
 	}
+	spawnApexEncounter() {
+		if (this.bossAlive || this.stageClearT > 0 || this.launchT > 0) return;
+		if (this.stageT >= 2.1 && !this.bossWarn) {
+			this.bossWarn = true;
+			for (const e of this.enemies) e.alive = false;
+			for (const b of this.eBullets) b.alive = false;
+			this.sfx.warn();
+			this.onChange();
+		}
+		if (this.stageT >= 4.2 && !this.bossAlive) this.spawnBoss();
+	}
 	spawnBoss() {
-		const meta = this.stage === 7 && !this.midCleared ? SUB_BOSS : BOSS_META[this.stage] ?? BOSS_META[9];
+		const meta = this.apex ? APEX_META : this.stage === 7 && !this.midCleared ? SUB_BOSS : BOSS_META[this.stage] ?? BOSS_META[9];
 		this.bossAlive = true;
 		this.bossWarn = true;
 		const patrol = meta.kind === "dunehauler" || meta.kind === "siegecrawler" || meta.kind === "battlekeel" || meta.kind === "krakenkeel";
@@ -3088,13 +3317,14 @@ export class VectorFangGame {
 			ground: meta.kind === "siegecrawler" || meta.kind === "rootcitadel" || meta.kind === "dunehauler" || meta.kind === "silohydra"
 		});
 		this.sfx.boss();
-		this.sfx.startBossMusic(this.stage);
+		this.sfx.startBossMusic(this.apex ? 9 : this.stage);
 		this.shake = 8;
 		this.setAtk("");
 		this.onChange();
 	}
 	pulse(e, dt, hz) {
-		const h = hz * this.diffOf().fire;
+		let h = hz * this.diffOf().fire * (this.cycle > 0 ? 1.32 : 1);
+		if (this.cycle > 0 && isBossKind(e.kind)) h *= 1.22;
 		return Math.floor(e.t * h) !== Math.floor((e.t - dt) * h);
 	}
 	minionCount() {
@@ -3109,9 +3339,18 @@ export class VectorFangGame {
 			e.flash = Math.max(0, e.flash - dt);
 			if (isBossKind(e.kind)) {
 				this.updateBoss(e, dt);
-				const maxY = e.kind === "skypike" ? 380 : 228;
+				const maxY = e.kind === "skypike" ? 380 : e.kind === "vectorhead" ? 210 : 228;
 				e.x = Math.max(36, Math.min(324, e.x));
 				e.y = Math.max(40, Math.min(maxY, e.y));
+				continue;
+			}
+			if (e.kind === "mite") {
+				e.x += e.vx * dt;
+				e.y += e.vy * dt;
+				if (e.x < 30 || e.x > 330) e.vx *= -1;
+				if (e.y > 560) e.vy = -Math.abs(e.vy || 40);
+				if (e.y < 90) e.vy = Math.abs(e.vy || 40);
+				if (this.pulse(e, dt, .85)) this.aimShot(e, 120, 1, "#ff7a3c");
 				continue;
 			}
 			if (e.kind === "wasp") {
@@ -3193,7 +3432,7 @@ export class VectorFangGame {
 		}
 	}
 	updateBoss(e, dt) {
-		const restY = (e.kind === "krakenkeel" ? SUB_BOSS : BOSS_META[this.stage] ?? BOSS_META[0]).restY;
+		const restY = (this.apex || e.kind === "vectorhead" ? APEX_META : e.kind === "krakenkeel" ? SUB_BOSS : BOSS_META[this.stage] ?? BOSS_META[0]).restY;
 		const entering = e.t < 1.7;
 		e.tell = Math.max(0, e.tell - dt);
 		const ratio = e.hp / e.maxHp;
@@ -3225,6 +3464,7 @@ export class VectorFangGame {
 		else if (e.kind === "battlekeel" || e.kind === "harborking") this.bossKeel(e, dt, p, ready, restY, entering);
 		else if (e.kind === "arsenalgate" || e.kind === "gyre") this.bossGate(e, dt, p, ready, restY, entering);
 		else if (e.kind === "skycathedral" || e.kind === "crowncore") this.bossCathedral(e, dt, p, ready, restY, entering);
+		else if (e.kind === "vectorhead") this.bossVector(e, dt, p, ready, restY, entering);
 		else if (e.kind === "solarmoth") {
 			e.x = 180 + Math.sin(e.t * .72) * 100;
 			e.y = restY + Math.sin(e.t * 1.35) * 18;
@@ -3326,6 +3566,11 @@ export class VectorFangGame {
 				"SHIELD SPOKES",
 				"DOUBLE HELIX",
 				"CROWN FLOWER"
+			],
+			vectorhead: [
+				"EYE LANCES",
+				"MOUTH MISSILES",
+				"HATCH"
 			]
 		}[kind]?.[phase] ?? "";
 	}
@@ -3756,6 +4001,48 @@ export class VectorFangGame {
 			if (this.pulse(e, dt, .48)) this.bloom(e.x, e.y, 8, 64, .32, "#3ec8ff", e.t);
 			if (this.pulse(e, dt, .68)) this.spread(e, 3, 142, .2, "#fff");
 			if (this.pulse(e, dt, .4)) this.ring(e, 8, 70, "#3ec8ff");
+		}
+	}
+	bossVector(e, dt, p, ready, restY, entering) {
+		if (!entering) e.y += (restY - e.y) * Math.min(1, dt * 1.15);
+		e.x = 180 + Math.sin(e.t * .42) * (34 + p * 12);
+		if (!ready) return;
+		const period = p === 0 ? 5.6 : p === 1 ? 4.8 : 4.3;
+		const u = this.cycleU(e, period);
+		const eyeY = e.y - 8;
+		const lx = e.x - 16;
+		const rx = e.x + 16;
+		let lancing = false;
+		if ((p === 0 || p === 2) && this.windAtk(e, u, .3, p === 2 ? 1.65 : 3.3, "EYE LANCES")) {
+			lancing = true;
+			const aim = Math.atan2(this.py - eyeY, this.px - e.x);
+			e.atk = aim;
+			if (this.pulse(e, dt, p === 2 ? 11 : 9)) {
+				this.shot(lx, eyeY, aim, 310, "#7fe8ff", { r: 1.7 });
+				this.shot(rx, eyeY, aim + (p >= 2 ? .07 : 0), 310, "#7fe8ff", { r: 1.7 });
+			}
+		}
+		if (!lancing) e.atk = -99;
+		if (p >= 1 && this.windAtk(e, u, p === 1 ? .35 : 1.8, p === 1 ? 2.7 : 3.05, "MOUTH MISSILES")) {
+			if (this.pulse(e, dt, p >= 2 ? 1.05 : .85)) {
+				this.fireMissile(e.x, e.y + 18);
+				if (p >= 2) this.fireMissile(e.x + Math.sin(e.t * 3) * 12, e.y + 20);
+			}
+		}
+		if (p >= 2 && this.windAtk(e, u, 3.15, period - .06, "HATCH")) {
+			if (this.pulse(e, dt, .62) && this.minionCount() < 5) {
+				const side = Math.random() < .5 ? -1 : 1;
+				this.spawnE({
+					kind: "mite",
+					x: e.x,
+					y: e.y + 24,
+					vx: side * 78,
+					vy: 42,
+					hp: 5,
+					r: 9,
+					score: 260
+				});
+			}
 		}
 	}
 	aimShot(e, spd, chance, color = "#ff5a6a") {
@@ -4397,6 +4684,12 @@ export class VectorFangGame {
 			if (boss) {
 				this.bossAlive = false;
 				this.eBullets.forEach((b) => b.alive = false);
+				if (e.kind === "vectorhead") {
+					for (const m of this.enemies) if (m.alive && m.kind === "mite") {
+						m.alive = false;
+						this.boomFx(m.x, m.y, "#ff7a3c", 1);
+					}
+				}
 				if (e.kind === "krakenkeel") {
 					this.midCleared = true;
 					this.midSpawnT = 2.1;
@@ -4430,11 +4723,12 @@ export class VectorFangGame {
 		}
 	}
 	incomingSpec() {
+		if (this.apex) return APEX_META;
 		return this.stage === 7 && !this.midCleared ? SUB_BOSS : BOSS_META[this.stage];
 	}
 	bossHud() {
 		const e = this.enemies.find((x) => x.alive && isBossKind(x.kind));
-		const spec = e ? e.kind === "krakenkeel" ? SUB_BOSS : BOSS_META[this.stage] : this.incomingSpec();
+		const spec = e ? e.kind === "vectorhead" ? APEX_META : e.kind === "krakenkeel" ? SUB_BOSS : BOSS_META[this.stage] : this.incomingSpec();
 		return {
 			warning: (this.bossWarn || this.midSpawnT > 0) && !e && this.stageClearT <= 0,
 			name: spec?.name ?? "",
@@ -4457,13 +4751,127 @@ export class VectorFangGame {
 		const shy = (Math.random() - .5) * this.shake;
 		c.setTransform(sx, 0, 0, sy, shx * sx, shy * sy);
 		c.imageSmoothingEnabled = false;
-		this.drawBg(c);
-		if (this.screen === "play" || this.screen === "pause" || this.screen === "over" || this.screen === "win") this.drawWorld(c);
+		if (this.screen === "psa") this.drawPsa(c);
+		else {
+			this.drawBg(c);
+			if (this.screen === "play" || this.screen === "pause" || this.screen === "over" || this.screen === "win") this.drawWorld(c);
+		}
+	}
+	drawPsa(c) {
+		c.fillStyle = "#8ec8ef";
+		c.fillRect(0, 0, 360, 640);
+		const cx = 180;
+		const cy = 228;
+		const R = 96;
+		c.beginPath();
+		c.arc(cx, cy, R, 0, Math.PI * 2);
+		c.fillStyle = "#e2b43a";
+		c.fill();
+		c.beginPath();
+		c.arc(cx, cy, R - 9, 0, Math.PI * 2);
+		c.fillStyle = "#143a86";
+		c.fill();
+		c.beginPath();
+		c.arc(cx, cy, R - 18, 0, Math.PI * 2);
+		c.strokeStyle = "#f0c14a";
+		c.lineWidth = 2;
+		c.stroke();
+		c.fillStyle = "#f0c14a";
+		for (let i = 0; i < 12; i++) {
+			const a = -Math.PI / 2 + (i / 12) * Math.PI * 2;
+			const sx = cx + Math.cos(a) * (R - 28);
+			const sy = cy + Math.sin(a) * (R - 28);
+			c.beginPath();
+			c.arc(sx, sy, 3.2, 0, Math.PI * 2);
+			c.fill();
+		}
+		c.beginPath();
+		c.arc(cx, cy, 40, 0, Math.PI * 2);
+		c.fillStyle = "#071633";
+		c.fill();
+		c.strokeStyle = "#7fe8ff";
+		c.lineWidth = 3;
+		c.beginPath();
+		c.moveTo(cx - 18, cy + 12);
+		c.lineTo(cx, cy - 18);
+		c.lineTo(cx + 18, cy + 12);
+		c.moveTo(cx, cy - 2);
+		c.lineTo(cx, cy + 18);
+		c.stroke();
+		c.fillStyle = "#f6d56a";
+		c.font = "12px Orbitron, sans-serif";
+		c.textAlign = "center";
+		c.fillText("NEXO ARCADE", cx, cy + R + 22);
+		c.fillStyle = "#e6b422";
+		c.font = "italic 22px Georgia, 'Times New Roman', serif";
+		c.fillText("“WINNERS DON'T", cx, 400);
+		c.fillText("USE DRUGS”", cx, 430);
+		c.font = "italic 15px Georgia, 'Times New Roman', serif";
+		c.fillStyle = "#c99212";
+		c.fillText("Play the game. Stay sharp.", cx, 468);
+		c.font = "12px Orbitron, sans-serif";
+		c.fillStyle = "#d4a017";
+		c.fillText("VECTOR FANG   ·   ARCADE PSA", cx, 508);
+		if (Math.floor(performance.now() / 480) % 2 === 0) {
+			c.font = "20px Orbitron, sans-serif";
+			c.fillStyle = "#f0c14a";
+			c.fillText(this.credits > 0 ? `CREDIT  ${this.credits}` : "INSERT COIN", cx, 584);
+		}
 	}
 	drawBg(c) {
+		if (this.apex) {
+			this.drawTron(c);
+			return;
+		}
 		drawTileMap(c, this.sprites.tiles, this.map, this.bg, this.stageT);
 	}
+	drawTron(c) {
+		c.fillStyle = "#01030a";
+		c.fillRect(0, 0, 360, 640);
+		const hy = 168;
+		const sky = c.createLinearGradient(0, 0, 0, hy + 40);
+		sky.addColorStop(0, "#020614");
+		sky.addColorStop(1, "#062033");
+		c.fillStyle = sky;
+		c.fillRect(0, 0, 360, hy + 24);
+		c.save();
+		c.strokeStyle = "#1ad4ff";
+		c.globalAlpha = .45;
+		c.lineWidth = 1;
+		c.beginPath();
+		for (let i = -9; i <= 9; i++) {
+			c.moveTo(180, hy);
+			c.lineTo(180 + i * 46, 640);
+		}
+		const scroll = this.stageT * .85 % 1;
+		for (let i = 0; i < 16; i++) {
+			const t = (i + scroll) / 16;
+			const y = hy + t * t * (640 - hy);
+			c.moveTo(0, y);
+			c.lineTo(360, y);
+		}
+		c.stroke();
+		c.globalAlpha = .85;
+		c.strokeStyle = "#ff6a1a";
+		c.beginPath();
+		c.moveTo(0, hy);
+		c.lineTo(360, hy);
+		c.stroke();
+		c.globalAlpha = .18;
+		c.fillStyle = "#ff6a1a";
+		c.fillRect(0, hy - 6, 360, 12);
+		c.globalAlpha = .35;
+		c.strokeStyle = "#ff6a1a";
+		const pulse = (Math.sin(this.stageT * 2) + 1) * .5;
+		c.globalAlpha = .15 + pulse * .2;
+		for (let i = 0; i < 5; i++) {
+			const y = 40 + (i * 97 + this.stageT * 28) % 140;
+			c.strokeRect(24 + i * 18, y, 70, 8);
+		}
+		c.restore();
+	}
 	drawWorld(c) {
+		if (!this.apex) {
 		this.fluid.draw(c);
 		if (this.stage === 0) this.drawCarrier(c);
 		for (const d of this.decor) {
@@ -4496,6 +4904,7 @@ export class VectorFangGame {
 				if (g.kind === "bunker" || g.kind === "tower" || g.kind === "radar") this.drawEmplacement(c, g);
 			}
 			if (g.mark) this.drawMark(c, g.x, g.y, g.r + 6);
+		}
 		}
 		for (const it of this.items) {
 			if (!it.alive) continue;
@@ -4630,7 +5039,7 @@ export class VectorFangGame {
 		}
 		const boss = this.enemies.find((e) => e.alive && isBossKind(e.kind));
 		if (boss && boss.t < 2.8) {
-			const spec = boss.kind === "krakenkeel" ? SUB_BOSS : BOSS_META[this.stage];
+			const spec = this.apex || boss.kind === "vectorhead" ? APEX_META : boss.kind === "krakenkeel" ? SUB_BOSS : BOSS_META[this.stage];
 			c.textAlign = "center";
 			c.fillStyle = "#f0c14a";
 			c.font = "9px monospace";
@@ -5424,6 +5833,99 @@ export class VectorFangGame {
 		}
 		c.globalAlpha = 1;
 	}
+	drawVectorHead(c, e) {
+		const open = this.bossAtk === "MOUTH MISSILES" || this.bossAtk === "HATCH";
+		c.save();
+		c.translate(e.x, e.y);
+		c.strokeStyle = "#ff6a1a";
+		c.fillStyle = "#d7dde6";
+		c.lineWidth = 1.4;
+		c.beginPath();
+		c.moveTo(0, -46);
+		c.lineTo(22, -34);
+		c.lineTo(34, -8);
+		c.lineTo(28, 22);
+		c.lineTo(12, 40);
+		c.lineTo(-12, 40);
+		c.lineTo(-28, 22);
+		c.lineTo(-34, -8);
+		c.lineTo(-22, -34);
+		c.closePath();
+		c.fill();
+		c.strokeStyle = "#1a1e24";
+		c.stroke();
+		c.fillStyle = "#101318";
+		c.fillRect(-10, -44, 20, 14);
+		c.fillStyle = "#ff6a1a";
+		c.fillRect(-8, -42, 16, 3);
+		c.strokeStyle = "#ff6a1a";
+		c.beginPath();
+		c.moveTo(-18, -38);
+		c.lineTo(-16, -58);
+		c.moveTo(18, -38);
+		c.lineTo(16, -58);
+		c.stroke();
+		c.fillStyle = "#ff6a1a";
+		c.fillRect(-17, -60, 3, 8);
+		c.fillRect(14, -60, 3, 8);
+		c.fillStyle = "#1a1e24";
+		c.beginPath();
+		c.arc(-16, -6, 11, 0, Math.PI * 2);
+		c.arc(16, -6, 11, 0, Math.PI * 2);
+		c.fill();
+		const glow = .65 + Math.sin(e.t * 8) * .35;
+		c.fillStyle = `rgba(90, 230, 255, ${glow})`;
+		c.beginPath();
+		c.arc(-16, -6, 5.5, 0, Math.PI * 2);
+		c.arc(16, -6, 5.5, 0, Math.PI * 2);
+		c.fill();
+		c.fillStyle = "#101318";
+		c.beginPath();
+		c.moveTo(0, 2);
+		c.lineTo(6, 14);
+		c.lineTo(-6, 14);
+		c.closePath();
+		c.fill();
+		c.fillStyle = "#07090c";
+		c.fillRect(-14, open ? 16 : 18, 28, open ? 12 : 5);
+		if (open) {
+			c.fillStyle = "#ff6a1a";
+			c.fillRect(-8, 19, 16, 3);
+		}
+		c.strokeStyle = "#ff6a1a";
+		c.beginPath();
+		c.moveTo(-20, 28);
+		c.lineTo(-12, 48);
+		c.moveTo(20, 28);
+		c.lineTo(12, 48);
+		c.stroke();
+		c.fillStyle = "#101318";
+		c.fillRect(-22, 8, 8, 16);
+		c.fillRect(14, 8, 8, 16);
+		c.strokeStyle = "#ff6a1a";
+		c.strokeRect(-22, 8, 8, 16);
+		c.strokeRect(14, 8, 8, 16);
+		c.restore();
+	}
+	drawMite(c, e) {
+		c.save();
+		c.translate(e.x, e.y);
+		c.rotate(Math.sin(e.t * 4) * .15);
+		c.fillStyle = "#101318";
+		c.strokeStyle = "#ff6a1a";
+		c.lineWidth = 1.2;
+		c.beginPath();
+		c.moveTo(0, 10);
+		c.lineTo(9, -8);
+		c.lineTo(0, -2);
+		c.lineTo(-9, -8);
+		c.closePath();
+		c.fill();
+		c.stroke();
+		c.fillStyle = "#7fe8ff";
+		c.fillRect(-2, -1, 4, 3);
+		c.restore();
+	}
 	drawEnemy(c, e) {
 		const stealth = e.kind === "phantomwing" && e.tag <= 0 && e.flash <= 0;
 		const ghost = e.kind === "phantomwing" && !stealth;
@@ -5443,7 +5945,9 @@ export class VectorFangGame {
 			c.restore();
 		}
 		const dy = seaUnit ? 8 : e.ground ? 4 : 0;
-		if (im && im.complete && im.naturalWidth > 0) {
+		if (e.kind === "vectorhead") this.drawVectorHead(c, e);
+		else if (e.kind === "mite") this.drawMite(c, e);
+		else if (im && im.complete && im.naturalWidth > 0) {
 			c.save();
 			c.translate(e.x, e.y + dy);
 			const air = e.kind === "wasp" || e.kind === "hornet" || e.kind === "lancejet" || e.kind === "gilded" || e.kind === "redtide";
@@ -5543,6 +6047,22 @@ export class VectorFangGame {
 		if (isBossKind(e.kind)) this.drawBossTells(c, e);
 	}
 	drawBossTells(c, e) {
+		if (e.kind === "vectorhead") {
+			if (e.atk > -90) {
+				c.save();
+				c.strokeStyle = "#7fe8ff";
+				c.globalAlpha = .55;
+				c.lineWidth = 2;
+				c.beginPath();
+				c.moveTo(e.x - 16, e.y - 8);
+				c.lineTo(e.x - 16 + Math.cos(e.atk) * 420, e.y - 8 + Math.sin(e.atk) * 420);
+				c.moveTo(e.x + 16, e.y - 8);
+				c.lineTo(e.x + 16 + Math.cos(e.atk) * 420, e.y - 8 + Math.sin(e.atk) * 420);
+				c.stroke();
+				c.restore();
+			}
+			return;
+		}
 		c.save();
 		c.lineWidth = 1.6;
 		if (e.kind === "siegecrawler") {

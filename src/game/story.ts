@@ -137,6 +137,7 @@ export const PILOT_ENDINGS: Record<
     served: { title: string; lines: string[] };
     bought: { title: string; lines: string[] };
     both: { title: string; lines: string[] };
+    trueEnd: { title: string; lines: string[] };
   }
 > = {
   azure: {
@@ -163,6 +164,16 @@ export const PILOT_ENDINGS: Record<
         "She could have walked. She flew Thunderkeep anyway.",
         "Ren goes down with the Crown. The Vesper comes home with a hole in the left wing.",
         "Home is a choice she already made. Leo can keep the table.",
+      ],
+    },
+    trueEnd: {
+      title: "THE CONTRACT HAD A FACE",
+      lines: [
+        "Thunderkeep fell, and the sky did not. NEXO sent her through the same ten sorties again, guns heavier, bosses that had learned her name.",
+        "The second cathedral split into a grid with no weather. A white head hung there. Not a pilot. A clerk with eyes.",
+        "It spoke in Ren's voice. Lances came out of the eyes. Missiles left the mouth. Then small ships, Crown paint, the same color Ren wore the night Rin woke up signed.",
+        "She cut the eyes first. The mouth kept talking until the Vesper went through it. The little ships died with the voice.",
+        "The grid folded into Port Valen rain. Leo's table is still empty. Rin files the true report under her own name: she never signed, and the thing that did is dead.",
       ],
     },
   },
@@ -192,6 +203,16 @@ export const PILOT_ENDINGS: Record<
         "The Talon gets a new paint job. Nobody asks why.",
       ],
     },
+    trueEnd: {
+      title: "A SERIAL HE KNEW",
+      lines: [
+        "The second contract was the same sea with meaner guns. Mack flew it because the first Thunderkeep had felt like a drill, not a kill.",
+        "Then the sky became a black grid, and a head waited with a navy stamp on the jaw. He had seen that serial in a briefing he was not supposed to keep.",
+        "NEXO had not built a fortress. They had bought a weapon and taught it to hire pilots. The eyes wrote lines of light. The mouth threw missiles, then little hulls that hated like ordnance.",
+        "He put the Talon through the mouth and did not laugh. The stamp cracked. The grid went out.",
+        "He writes the letter this time. It says the work is over. He does not sign another name.",
+      ],
+    },
   },
   iron: {
     thanks: "Thank you, valiant pilot. Nordmark winter will wait.",
@@ -219,7 +240,27 @@ export const PILOT_ENDINGS: Record<
         "Nordmark gets her back with both hands clean. The Anvil keeps the holes.",
       ],
     },
+    trueEnd: {
+      title: "THE VOICE IN THE YARD",
+      lines: [
+        "Greta flew the iron through Thunderkeep a second time because the first wreck lied about who was holding the hostages.",
+        "The bosses hit harder. She expected that. She did not expect the sky to become a hangar with no weather, and a head that spoke with the voice from the border trains.",
+        "Lasers from the eyes. Missiles from the teeth. When the metal ran out, small alien hulls spilled from the mouth and had to be broken one by one.",
+        "She welded nothing. She broke the jaw. The voice stopped mid-name.",
+        "Nordmark winter. She opens the bottle at last. The note is not a thank-you. It is a list of names the head can no longer read.",
+      ],
+    },
   },
+};
+
+export const LOOP_NOTE =
+  "Thunderkeep is down. The contract does not close. Sorties restart. Every boss hits harder. Finish them again.";
+
+export const APEX_BRIEF = {
+  title: "THE GRID",
+  target: "Null Crown. A head on a light-grid. It does not exist until the second contract is flown to the end.",
+  weak: "Eye lances first. Mouth missiles second. Whatever crawls out of the jaw has to die too.",
+  payout: "Primary: NULL CROWN — true ending",
 };
 
 export type ShopId =
@@ -406,6 +447,10 @@ export const ENDINGS = {
   desert: {
     title: "NO HOME RUNWAY",
     line: "Valen radar paints you hostile. Desertion is treason. There is no Mori Air gate that will open.",
+  },
+  true: {
+    title: "THE GRID GOES DARK",
+    line: "You flew the ten sorties twice. Thunderkeep was only the door. Behind it, the thing that wrote the contracts had a face.",
   },
 } as const;
 

@@ -3,7 +3,7 @@ import { Gamepad2, Heart, Keyboard, Medal, Pause, Sparkle, Volume2, VolumeX } fr
 import { VectorFangGame, STAGES, BONUS_STAGES, type ClearReport, type Screen } from "@/game/engine";
 import { continueCost, type HiEntry } from "@/game/hiscore";
 import { ACT_LABEL, ACTS, keyLabel, padButtonLabel, type Act, type Device } from "@/game/controls";
-import { BRIEFS, BUYOUT, CREW, CREW_MODES, CREW_PORTRAITS, DIFFS, ENDINGS, LORE, MISSION_INTRO, PILOTS, PILOT_ENDINGS, PILOT_INTRO, PORTRAITS, SHOP, canEquip, emptyLoadout, money, shopPrice, specialCap, specialCount, type CrewMode, type DiffId, type Ending, type Loadout, type ShipId, type ShopId } from "@/game/story";
+import { APEX_BRIEF, BRIEFS, BUYOUT, CREW, CREW_MODES, CREW_PORTRAITS, DIFFS, ENDINGS, LOOP_NOTE, LORE, MISSION_INTRO, PILOTS, PILOT_ENDINGS, PILOT_INTRO, PORTRAITS, SHOP, canEquip, emptyLoadout, money, shopPrice, specialCap, specialCount, type CrewMode, type DiffId, type Ending, type Loadout, type ShipId, type ShopId } from "@/game/story";
 
 const SHIP_ART: Record<ShipId, string> = {
   azure: "/sprites/azure.png",
@@ -113,7 +113,7 @@ function HangarCatalog({
 
 function padStartButton(screen: Screen, buttons: HTMLButtonElement[]) {
   const label = (re: RegExp) => buttons.find((b) => re.test((b.textContent || "").replace(/\s+/g, " ").trim()));
-  if (screen === "title") return label(/^START$/);
+  if (screen === "title") return label(/PRESS START/);
   if (screen === "select") return label(/SIGN AND LAUNCH/);
   if (screen === "brief" || screen === "shop") return label(/^TAKE OFF$/);
   if (screen === "intro") return label(/BRIEFING/);
@@ -254,6 +254,9 @@ export function VectorFang() {
     bonusPerfect: false,
     bonusBanner: 0,
     bonusName: BONUS_STAGES[0] as string,
+    cycle: 0,
+    apex: false,
+    credits: 0,
   });
 
   useEffect(() => {
@@ -321,6 +324,9 @@ export function VectorFang() {
         bonusPerfect: game.bonusPerfect,
         bonusBanner: game.bonusBanner,
         bonusName: game.bonusName(),
+        cycle: game.cycle,
+        apex: game.apex,
+        credits: game.credits,
       });
     };
     game.onChange = sync;
@@ -421,6 +427,11 @@ export function VectorFang() {
       }
       if (sc === "play") return;
       const ev = game.takePadMenu();
+      if (ev.coin) game.insertCoin();
+      if (sc === "psa") {
+        if (ev.start || ev.confirm || ev.cancel) game.leavePsa();
+        return;
+      }
       if (sc === "name") {
         if (ev.left) game.setNameSlot(game.nameSlot - 1);
         if (ev.right) game.setNameSlot(game.nameSlot + 1);
@@ -461,11 +472,11 @@ export function VectorFang() {
   const g = () => gameRef.current;
 
   const start = () => {
-    g()?.openSelect(false);
+    g()?.cabinetStart(false);
   };
 
   const startVs = () => {
-    g()?.openSelect(true);
+    g()?.cabinetStart(true);
   };
 
   const play = () => {
@@ -476,16 +487,42 @@ export function VectorFang() {
     g()?.launchVs();
   };
 
-  const onStick = (clientX: number, clientY: number, target: HTMLElement) => {
-    const r = target.getBoundingClientRect();
-    const x = (clientX - r.left) / r.width * 2 - 1;
-    const y = (clientY - r.top) / r.height * 2 - 1;
+  const followFinger = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    const game = g();
+    if (!canvas || !game || game.screen !== "play" || game.demo || game.hack) return;
+    const r = canvas.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return;
+    const x = ((e.clientX - r.left) / r.width) * 360;
+    const y = ((e.clientY - r.top) / r.height) * 640 - 72;
+    game.touch.drag = true;
+    game.touch.tx = x;
+    game.touch.ty = y;
+  };
+
+  const endFinger = () => {
     const game = g();
     if (!game) return;
-    game.touch.moving = true;
-    game.touch.mx = Math.max(-1, Math.min(1, x));
-    game.touch.my = Math.max(-1, Math.min(1, y));
+    game.touch.drag = false;
   };
+
+  const holdTouch = (flag: "fire" | "bomb" | "mode" | "special") => ({
+    style: { touchAction: "none" as const },
+    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      const game = g();
+      if (game) game.touch[flag] = true;
+    },
+    onPointerUp: () => {
+      const game = g();
+      if (game) game.touch[flag] = false;
+    },
+    onPointerCancel: () => {
+      const game = g();
+      if (game) game.touch[flag] = false;
+    },
+  });
 
   return (
     <div className="flex min-h-dvh flex-col items-center bg-vf-bg text-vf-ice">
@@ -496,15 +533,27 @@ export function VectorFang() {
           wrapRef.current?.focus();
           g()?.unlock();
         }}
-        className="relative flex w-full max-w-[480px] flex-1 flex-col items-center justify-center px-2 py-2 outline-none"
+        className="crt-cabinet relative flex w-full max-w-[480px] flex-1 flex-col items-center justify-center px-2 py-2 outline-none"
       >
         <canvas
           ref={canvasRef}
           className="rounded-md border border-vf-line bg-vf-bg shadow-[0_0_40px_#3ec8ff22]"
           style={{ touchAction: "none", imageRendering: "pixelated" }}
+          onPointerDown={(e) => {
+            if (e.pointerType === "mouse") return;
+            e.currentTarget.setPointerCapture(e.pointerId);
+            followFinger(e);
+          }}
+          onPointerMove={(e) => {
+            if (e.pointerType === "mouse") return;
+            if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+            followFinger(e);
+          }}
+          onPointerUp={endFinger}
+          onPointerCancel={endFinger}
         />
 
-        {screen !== "play" && (
+        {screen !== "play" && screen !== "psa" && (
           <div ref={menuRef} className="absolute inset-0 flex items-start justify-center overflow-y-auto p-3">
             <div
               className={`my-auto w-full max-w-[340px] rounded-md border border-vf-line ${
@@ -601,12 +650,22 @@ export function VectorFang() {
                       onChange={(e) => g()?.typeHack(e.target.value)}
                     />
                   </div>
+                  <p className={`font-display text-sm tracking-[0.28em] ${hud.credits < 1 ? "vf-blink text-vf-gold" : "text-vf-cyan"}`}>
+                    {hud.credits < 1 ? "INSERT COIN" : `CREDIT ${hud.credits}`}
+                  </p>
+                  <button
+                    type="button"
+                    className="min-h-11 rounded-md border border-vf-gold bg-vf-bg px-4 py-3 font-display text-sm font-bold tracking-widest text-vf-gold"
+                    onClick={() => g()?.insertCoin()}
+                  >
+                    INSERT COIN
+                  </button>
                   <button
                     type="button"
                     className="min-h-11 rounded-md bg-vf-cyan px-4 py-3 font-display text-sm font-bold tracking-widest text-vf-bg"
                     onClick={start}
                   >
-                    START
+                    PRESS START
                   </button>
                   <button
                     type="button"
@@ -682,7 +741,8 @@ export function VectorFang() {
                     CONTROLS
                   </button>
                   <p className="font-mono text-[11px] text-vf-mute">HI {hud.hi.toString().padStart(8, "0")}</p>
-                  <p className="font-mono text-[10px] text-vf-mute">DEMO PLAYS IF YOU WAIT</p>
+                  <p className="font-mono text-[10px] text-vf-mute">5 OR L1 INSERTS A COIN · ONE CREDIT TO START</p>
+                  <p className="font-mono text-[10px] text-vf-mute">DEMO, THEN THE ARCADE MESSAGE</p>
                   <p className="font-mono text-[10px] text-vf-gold">{padOn ? "PS4 ON · OPTIONS STARTS" : "PS4 · CLICK ONCE, THEN OPTIONS"}</p>
                 </div>
               )}
@@ -693,7 +753,7 @@ export function VectorFang() {
                   <p>Move with WASD, arrows, or a PS4 pad: left stick and D-pad. Options starts. Cross or R2 fires. Circle or R1 is the bomb. Square or L1 is the special. Triangle swaps drones. Options pauses in flight. Share mutes. CONTROLS on the title lets each player pick keyboard, PS4, or both, and rebind every button.</p>
                   <p>Hi-score letters: D-pad up and down changes the letter, left and right changes the slot, Cross enters. Secret code: ENTER CODE, then the letter grid. Circle deletes.</p>
                   <p>Sortie 01 catapults off the NEXO carrier. Lock 0.55s, 3-2-1 on 0.48s beats (T-minus 2.54s to the shot), ignite 0.55s, then a 2.05s burn down the keel.</p>
-                  <p>Recorded themes: title, hangar, briefing, one track per sortie, boss, Sky Cathedral, bonus, stage clear, contract, and the ending.</p>
+                  <p>Recorded themes: title, hangar, briefing, one track per sortie, boss, Sky Cathedral, the Grid, bonus, stage clear, contract, and the ending.</p>
                   <p>LANCE drones fire lasers. SEEK drones home. Overdrive dumps every 6s.</p>
                   <p>Tiny white core is your hitbox. Shells and air units clip it — tanks, ships, and buildings you fly over. Chain air kills onto ground units for multipliers.</p>
                   <p>Each stage ends with a named boss. Watch the warning sting, then break their armor phases.</p>
@@ -709,7 +769,7 @@ export function VectorFang() {
                   <p>1P, 2P, or 1P+CPU on the select screen. P1 is WASD. P2 is arrows and Enter. Shared hearts.</p>
                   <p>Ground bunkers, hangars, docks, and crates drop gold, bombs, shields, and extra lives. Barrels and fuel tanks chain-explode — dump a row and anything next to them goes with it. Trees, rocks, and huts also break. Tanks stay on land. Water is for destroyers and subs — they lock missiles on you.</p>
                   <p>Three hearts start a run. Empty them and it is game over — unless you continue from bounty.</p>
-                  <p>Rin: highest fire rate. Mack: wide shot + extra special stock. Greta: 45° ground stream. SPACE gun · Z special · X bomb. Shields eat hits before lives.</p>
+                  <p>Rin: highest fire rate. Mack: wide shot + extra special stock. Greta: 45° ground stream. SPACE gun · Z special · X bomb. Shields eat hits before lives. Press 5 or L1 to insert a coin, then PRESS START. Type HACKMODE on the title and the CPU flies the whole contract: both loops, the Grid, and the ending.</p>
                   <button type="button" className="min-h-11 rounded-md bg-vf-cyan font-display text-sm font-bold text-vf-bg" onClick={start}>
                     CONTINUE
                   </button>
@@ -724,7 +784,7 @@ export function VectorFang() {
                       {p}
                     </p>
                   ))}
-                  <p className="text-vf-cyan">1. Serve three years. 2. Buy out for {money(BUYOUT)}. 3. Desert — treason.</p>
+                  <p className="text-vf-cyan">1. Serve three years. 2. Buy out for {money(BUYOUT)}. 3. Desert — treason. Finish Thunderkeep and the sorties start again, harder. Finish them a second time and the Grid opens.</p>
                   <button type="button" className="min-h-11 shrink-0 rounded-md bg-vf-cyan font-display text-sm font-bold text-vf-bg" onClick={start}>
                     CHOOSE PILOT
                   </button>
@@ -783,9 +843,9 @@ export function VectorFang() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-display text-lg tracking-widest text-vf-ice drop-shadow">
-                      SORTIE {String(hud.stage + 1).padStart(2, "0")}
+                      {hud.apex ? "FINAL" : `SORTIE ${String(hud.stage + 1).padStart(2, "0")}`}
                     </p>
-                    <p className="font-mono text-[10px] text-vf-gold">{STAGES[hud.stage]}</p>
+                    <p className="font-mono text-[10px] text-vf-gold">{hud.apex ? "THE GRID" : hud.cycle > 0 ? `LOOP · ${STAGES[hud.stage]}` : STAGES[hud.stage]}</p>
                   </div>
                   <img
                     src={CREW_PORTRAITS.vale}
@@ -795,9 +855,20 @@ export function VectorFang() {
                   />
                   <div className="rounded-sm border border-vf-line bg-vf-bg/92 p-3">
                     <p className="font-mono text-[10px] tracking-[0.25em] text-vf-gold">{CREW.vale.name}</p>
-                    <p className="mt-2 font-mono text-sm leading-relaxed text-vf-ice">{BRIEFS[hud.stage]?.target}</p>
-                    <p className="mt-2 font-mono text-sm leading-relaxed text-vf-mute">{BRIEFS[hud.stage]?.weak}</p>
-                    <p className="mt-2 font-mono text-[11px] text-vf-gold">{BRIEFS[hud.stage]?.payout}</p>
+                    {hud.apex ? (
+                      <>
+                        <p className="mt-2 font-mono text-sm leading-relaxed text-vf-ice">{APEX_BRIEF.target}</p>
+                        <p className="mt-2 font-mono text-sm leading-relaxed text-vf-mute">{APEX_BRIEF.weak}</p>
+                        <p className="mt-2 font-mono text-[11px] text-vf-gold">{APEX_BRIEF.payout}</p>
+                      </>
+                    ) : (
+                      <>
+                        {hud.cycle > 0 && hud.stage === 0 && <p className="mt-2 font-mono text-sm leading-relaxed text-vf-gold">{LOOP_NOTE}</p>}
+                        <p className="mt-2 font-mono text-sm leading-relaxed text-vf-ice">{BRIEFS[hud.stage]?.target}</p>
+                        <p className="mt-2 font-mono text-sm leading-relaxed text-vf-mute">{BRIEFS[hud.stage]?.weak}</p>
+                        <p className="mt-2 font-mono text-[11px] text-vf-gold">{BRIEFS[hud.stage]?.payout}</p>
+                      </>
+                    )}
                   </div>
                   <p className="font-mono text-xs text-vf-cyan">
                     BOUNTY {money(hud.bounty)} / {money(BUYOUT)}
@@ -1108,13 +1179,13 @@ export function VectorFang() {
                       ))}
                     </div>
                   )}
-                  {!hud.clear.last && (
+                  {!hud.clear.last && !hud.clear.apexNext && (
                     <>
                       <div className="flex items-center gap-3">
                         <img src={CREW_PORTRAITS.nash} alt="" className="h-12 w-12 rounded-sm border border-vf-line object-cover" style={{ imageRendering: "pixelated" }} />
                         <div>
                           <p className="font-mono text-[10px] tracking-[0.25em] text-vf-gold">{CREW.nash.name}</p>
-                          <p className="font-display text-sm text-vf-ice">RE-ARM BEFORE SORTIE {String(hud.clear.stage + 2).padStart(2, "0")}</p>
+                          <p className="font-display text-sm text-vf-ice">RE-ARM BEFORE SORTIE {hud.clear.loopNext ? "01" : String(hud.clear.stage + 2).padStart(2, "0")}</p>
                         </div>
                       </div>
                       <HangarCatalog
@@ -1131,7 +1202,7 @@ export function VectorFang() {
                     className="min-h-11 rounded-md bg-vf-cyan font-display text-sm font-bold text-vf-bg"
                     onClick={() => g()?.continueFromClear()}
                   >
-                    {hud.clear.last ? "END CONTRACT" : hud.pendingBonus ? "BONUS STAGE" : "NEXT BRIEFING"}
+                    {hud.clear.last ? "TRUE ENDING" : hud.clear.apexNext ? "ENTER THE GRID" : hud.clear.loopNext ? "SECOND CONTRACT" : hud.pendingBonus ? "BONUS STAGE" : "NEXT BRIEFING"}
                   </button>
                 </div>
               )}
@@ -1303,7 +1374,13 @@ export function VectorFang() {
                     </div>
                   </div>
                   <p className="font-mono text-[10px] text-vf-mute">Highest cabinet score still stands.</p>
-                  <button type="button" className="min-h-11 rounded-md bg-vf-cyan font-display text-sm font-bold text-vf-bg" onClick={playVs}>
+                  <button type="button" className="min-h-11 rounded-md border border-vf-gold font-display text-sm font-bold text-vf-gold" onClick={() => g()?.insertCoin()}>
+                    INSERT COIN
+                  </button>
+                  <p className={`font-mono text-xs ${hud.credits < 1 ? "vf-blink text-vf-gold" : "text-vf-cyan"}`}>
+                    {hud.credits < 1 ? "INSERT COIN" : `CREDIT ${hud.credits}`}
+                  </p>
+                  <button type="button" className="min-h-11 rounded-md bg-vf-cyan font-display text-sm font-bold text-vf-bg" onClick={() => g()?.retryVs()}>
                     REMATCH
                   </button>
                   <button
@@ -1331,7 +1408,13 @@ export function VectorFang() {
                     {hud.ending === "desert" ? ENDINGS.desert.line : ENDINGS.mia.line}
                   </p>
                   <p className="text-center font-mono text-vf-gold">{money(hud.bounty)}</p>
-                  <button type="button" className="min-h-11 rounded-md bg-vf-cyan font-display text-sm font-bold text-vf-bg" onClick={() => (hud.hack ? g()?.startHack() : play())}>
+                  <button type="button" className="min-h-11 rounded-md border border-vf-gold font-display text-sm font-bold text-vf-gold" onClick={() => g()?.insertCoin()}>
+                    INSERT COIN
+                  </button>
+                  <p className={`text-center font-mono text-xs ${hud.credits < 1 ? "vf-blink text-vf-gold" : "text-vf-cyan"}`}>
+                    {hud.credits < 1 ? "INSERT COIN" : `CREDIT ${hud.credits}`}
+                  </p>
+                  <button type="button" className="min-h-11 rounded-md bg-vf-cyan font-display text-sm font-bold text-vf-bg" onClick={() => (hud.hack ? g()?.startHack() : g()?.retryCabinet())}>
                     {hud.hack ? "TRY AGAIN" : "RETRY"}
                   </button>
                   <button
@@ -1374,13 +1457,20 @@ export function VectorFang() {
                   />
                   <p className="font-mono text-[10px] tracking-[0.28em] text-vf-gold">{PILOTS[ship].call}</p>
                   <h2 className="font-display text-lg tracking-wide text-vf-cyan">
-                    {hud.ending === "bought"
+                    {hud.ending === "true"
+                      ? PILOT_ENDINGS[ship].trueEnd.title
+                      : hud.ending === "bought"
                       ? PILOT_ENDINGS[ship].bought.title
                       : hud.ending === "both"
                         ? PILOT_ENDINGS[ship].both.title
                         : PILOT_ENDINGS[ship].served.title}
                   </h2>
-                  {(hud.ending === "bought"
+                  {hud.ending === "true" && (
+                    <p className="font-mono text-sm leading-relaxed text-vf-ice">{ENDINGS.true.line}</p>
+                  )}
+                  {(hud.ending === "true"
+                    ? PILOT_ENDINGS[ship].trueEnd.lines
+                    : hud.ending === "bought"
                     ? PILOT_ENDINGS[ship].bought.lines
                     : hud.ending === "both"
                       ? PILOT_ENDINGS[ship].both.lines
@@ -1391,7 +1481,10 @@ export function VectorFang() {
                     </p>
                   ))}
                   <p className="font-display text-vf-gold">{money(hud.bounty)}</p>
-                  <button type="button" className="min-h-11 rounded-md bg-vf-cyan font-display text-sm font-bold text-vf-bg" onClick={play}>
+                  <button type="button" className="min-h-11 rounded-md border border-vf-gold font-display text-sm font-bold text-vf-gold" onClick={() => g()?.insertCoin()}>
+                    INSERT COIN
+                  </button>
+                  <button type="button" className="min-h-11 rounded-md bg-vf-cyan font-display text-sm font-bold text-vf-bg" onClick={() => g()?.retryCabinet()}>
                     NEW CONTRACT
                   </button>
                   <button
@@ -1421,7 +1514,10 @@ export function VectorFang() {
                         : ENDINGS.served.line}
                   </p>
                   <p className="font-display text-vf-gold">{money(hud.bounty)}</p>
-                  <button type="button" className="min-h-11 rounded-md bg-vf-cyan font-display text-sm font-bold text-vf-bg" onClick={play}>
+                  <button type="button" className="min-h-11 rounded-md border border-vf-gold font-display text-sm font-bold text-vf-gold" onClick={() => g()?.insertCoin()}>
+                    INSERT COIN
+                  </button>
+                  <button type="button" className="min-h-11 rounded-md bg-vf-cyan font-display text-sm font-bold text-vf-bg" onClick={() => g()?.retryCabinet()}>
                     NEW CONTRACT
                   </button>
                 </div>
@@ -1465,7 +1561,7 @@ export function VectorFang() {
               </div>
               <div className="text-right">
                 <div className="text-vf-cyan">
-                  {hud.demo ? "DEMO" : hud.hack && !hud.bonus ? "HACKMODE" : hud.bonus ? hud.bonusName : STAGES[hud.stage]}
+                  {hud.demo ? "DEMO" : hud.hack ? (hud.apex ? "CPU · THE GRID" : hud.cycle > 0 ? `CPU LOOP ${STAGES[hud.stage]}` : `CPU ${STAGES[hud.stage]}`) : hud.apex ? "THE GRID" : hud.bonus ? hud.bonusName : hud.cycle > 0 ? `LOOP ${STAGES[hud.stage]}` : STAGES[hud.stage]}
                 </div>
                 {hud.demo ? (
                   <div>ATTRACT MODE</div>
@@ -1478,7 +1574,7 @@ export function VectorFang() {
                         aria-hidden
                       />
                     ))}
-                    <span className="ml-1">S{hud.armor} B{hud.bombs}</span>
+                    <span className="ml-1">C{hud.credits} S{hud.armor} B{hud.bombs}</span>
                   </div>
                 )}
                 <div>
@@ -1545,82 +1641,29 @@ export function VectorFang() {
                 {hud.muted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
               </button>
             </div>
-            <div className="absolute bottom-4 left-0 right-0 flex items-end justify-between px-4 md:hidden">
-              <div
-                className="size-28 rounded-full border border-vf-line bg-vf-panel/50"
-                onPointerDown={(e) => {
-                  (e.target as HTMLElement).setPointerCapture(e.pointerId);
-                  onStick(e.clientX, e.clientY, e.currentTarget);
-                }}
-                onPointerMove={(e) => {
-                  if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-                  onStick(e.clientX, e.clientY, e.currentTarget);
-                }}
-                onPointerUp={() => {
-                  const game = g();
-                  if (game) {
-                    game.touch.moving = false;
-                    game.touch.mx = 0;
-                    game.touch.my = 0;
-                  }
-                }}
-              />
-              <div className="flex flex-col gap-2">
+            <div className="pointer-events-none absolute bottom-3 right-3 flex flex-col items-end gap-2 md:hidden">
+              <p className="font-mono text-[9px] tracking-[0.18em] text-vf-mute">DRAG TO FLY · AUTO FIRE</p>
+              <div className="pointer-events-auto flex gap-2" style={{ touchAction: "none" }}>
                 <button
                   type="button"
-                  className="min-h-11 rounded-md bg-vf-gold px-4 font-display text-xs font-bold text-vf-bg"
-                  onPointerDown={() => {
-                    const game = g();
-                    if (game) game.touch.special = true;
-                  }}
-                  onPointerUp={() => {
-                    const game = g();
-                    if (game) game.touch.special = false;
-                  }}
+                  className="min-h-12 min-w-16 rounded-md bg-vf-gold px-3 font-display text-[11px] font-bold text-vf-bg"
+                  {...holdTouch("special")}
                 >
                   SPEC
                 </button>
                 <button
                   type="button"
-                  className="min-h-11 rounded-md bg-vf-gold px-4 font-display text-xs font-bold text-vf-bg"
-                  onPointerDown={() => {
-                    const game = g();
-                    if (game) game.touch.mode = true;
-                  }}
-                  onPointerUp={() => {
-                    const game = g();
-                    if (game) game.touch.mode = false;
-                  }}
+                  className="min-h-12 min-w-16 rounded-md border border-vf-cyan bg-vf-panel/80 px-3 font-display text-[11px] font-bold text-vf-cyan"
+                  {...holdTouch("mode")}
                 >
                   MODE
                 </button>
                 <button
                   type="button"
-                  className="min-h-11 rounded-md bg-vf-crimson px-4 font-display text-xs font-bold text-vf-ice"
-                  onPointerDown={() => {
-                    const game = g();
-                    if (game) game.touch.bomb = true;
-                  }}
-                  onPointerUp={() => {
-                    const game = g();
-                    if (game) game.touch.bomb = false;
-                  }}
+                  className="min-h-14 min-w-20 rounded-md bg-vf-crimson px-4 font-display text-sm font-bold text-vf-ice"
+                  {...holdTouch("bomb")}
                 >
                   BOMB
-                </button>
-                <button
-                  type="button"
-                  className="min-h-14 min-w-20 rounded-md bg-vf-cyan px-5 font-display text-sm font-bold text-vf-bg"
-                  onPointerDown={() => {
-                    const game = g();
-                    if (game) game.touch.fire = true;
-                  }}
-                  onPointerUp={() => {
-                    const game = g();
-                    if (game) game.touch.fire = false;
-                  }}
-                >
-                  FIRE
                 </button>
               </div>
             </div>
@@ -1628,6 +1671,19 @@ export function VectorFang() {
             )}
           </>
         )}
+        {screen === "psa" && (
+          <>
+            <button type="button" className="absolute inset-0 z-20 bg-transparent" onClick={() => g()?.leavePsa()} aria-label="Back to title" />
+            <button
+              type="button"
+              className="absolute bottom-16 left-1/2 z-40 min-h-11 -translate-x-1/2 rounded-md border border-vf-gold bg-vf-bg/80 px-5 font-display text-sm font-bold tracking-widest text-vf-gold"
+              onClick={() => g()?.insertCoin()}
+            >
+              INSERT COIN
+            </button>
+          </>
+        )}
+        <div className="crt-glass" aria-hidden="true" />
       </div>
       <p className="hidden pb-2 font-mono text-[10px] text-vf-mute md:block">WASD move · SPACE gun · Z special · X bomb · C drone · P pause</p>
     </div>

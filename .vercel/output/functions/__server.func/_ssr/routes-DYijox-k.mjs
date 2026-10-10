@@ -1,7 +1,7 @@
 import { i as __toESM } from "../_runtime.mjs";
-import { L as require_react, v as require_jsx_runtime } from "../_libs/@tanstack/react-router+[...].mjs";
+import { K as require_react, b as require_jsx_runtime } from "../_libs/@tanstack/react-router+[...].mjs";
 import { a as Pause, c as Heart, i as Sparkle, l as Gamepad2, n as Volume2, o as Medal, s as Keyboard, t as VolumeX } from "../_libs/lucide-react.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-DOnNMgay.js
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-DYijox-k.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var Sfx = class {
@@ -874,6 +874,16 @@ var PILOT_ENDINGS = {
 				"Ren goes down with the Crown. The Vesper comes home with a hole in the left wing.",
 				"Home is a choice she already made. Leo can keep the table."
 			]
+		},
+		trueEnd: {
+			title: "THE CONTRACT HAD A FACE",
+			lines: [
+				"Thunderkeep fell, and the sky did not. NEXO sent her through the same ten sorties again, guns heavier, bosses that had learned her name.",
+				"The second cathedral split into a grid with no weather. A white head hung there. Not a pilot. A clerk with eyes.",
+				"It spoke in Ren's voice. Lances came out of the eyes. Missiles left the mouth. Then small ships, Crown paint, the same color Ren wore the night Rin woke up signed.",
+				"She cut the eyes first. The mouth kept talking until the Vesper went through it. The little ships died with the voice.",
+				"The grid folded into Port Valen rain. Leo's table is still empty. Rin files the true report under her own name: she never signed, and the thing that did is dead."
+			]
 		}
 	},
 	crimson: {
@@ -900,6 +910,16 @@ var PILOT_ENDINGS = {
 				"He had the million. He flew Thunderkeep anyway.",
 				"Crown wreckage on the canopy. He laughs once.",
 				"The Talon gets a new paint job. Nobody asks why."
+			]
+		},
+		trueEnd: {
+			title: "A SERIAL HE KNEW",
+			lines: [
+				"The second contract was the same sea with meaner guns. Mack flew it because the first Thunderkeep had felt like a drill, not a kill.",
+				"Then the sky became a black grid, and a head waited with a navy stamp on the jaw. He had seen that serial in a briefing he was not supposed to keep.",
+				"NEXO had not built a fortress. They had bought a weapon and taught it to hire pilots. The eyes wrote lines of light. The mouth threw missiles, then little hulls that hated like ordnance.",
+				"He put the Talon through the mouth and did not laugh. The stamp cracked. The grid went out.",
+				"He writes the letter this time. It says the work is over. He does not sign another name."
 			]
 		}
 	},
@@ -928,8 +948,24 @@ var PILOT_ENDINGS = {
 				"She files the buyout and the after-action in the same hour.",
 				"Nordmark gets her back with both hands clean. The Anvil keeps the holes."
 			]
+		},
+		trueEnd: {
+			title: "THE VOICE IN THE YARD",
+			lines: [
+				"Greta flew the iron through Thunderkeep a second time because the first wreck lied about who was holding the hostages.",
+				"The bosses hit harder. She expected that. She did not expect the sky to become a hangar with no weather, and a head that spoke with the voice from the border trains.",
+				"Lasers from the eyes. Missiles from the teeth. When the metal ran out, small alien hulls spilled from the mouth and had to be broken one by one.",
+				"She welded nothing. She broke the jaw. The voice stopped mid-name.",
+				"Nordmark winter. She opens the bottle at last. The note is not a thank-you. It is a list of names the head can no longer read."
+			]
 		}
 	}
+};
+var APEX_BRIEF = {
+	title: "THE GRID",
+	target: "Null Crown. A head on a light-grid. It does not exist until the second contract is flown to the end.",
+	weak: "Eye lances first. Mouth missiles second. Whatever crawls out of the jaw has to die too.",
+	payout: "Primary: NULL CROWN — true ending"
 };
 var SHOP = [
 	{
@@ -1211,6 +1247,10 @@ var ENDINGS = {
 	desert: {
 		title: "NO HOME RUNWAY",
 		line: "Valen radar paints you hostile. Desertion is treason. There is no Mori Air gate that will open."
+	},
+	true: {
+		title: "THE GRID GOES DARK",
+		line: "You flew the ten sorties twice. Thunderkeep was only the door. Behind it, the thing that wrote the contracts had a face."
 	}
 };
 var TABLE_KEY = "vectorfang-hi-table-v1";
@@ -2425,7 +2465,20 @@ var SUB_BOSS = {
 	restY: 112,
 	weak: "The snorkel. Then the magazine."
 };
-var BOSS_KINDS = /* @__PURE__ */ new Set([...BOSS_META.map((b) => b.kind), SUB_BOSS.kind]);
+var APEX_META = {
+	kind: "vectorhead",
+	name: "NULL CROWN",
+	hp: 260,
+	r: 46,
+	score: 12e3,
+	restY: 118,
+	weak: "The eyes. Then the mouth. Kill what it spits."
+};
+var BOSS_KINDS = /* @__PURE__ */ new Set([
+	...BOSS_META.map((b) => b.kind),
+	SUB_BOSS.kind,
+	"vectorhead"
+]);
 function isBossKind(k) {
 	return BOSS_KINDS.has(k);
 }
@@ -2535,6 +2588,9 @@ var VectorFangGame = class {
 		mx: 0,
 		my: 0,
 		moving: false,
+		drag: false,
+		tx: 180,
+		ty: 520,
 		fire: false,
 		bomb: false,
 		mode: false,
@@ -2622,6 +2678,7 @@ var VectorFangGame = class {
 	crew = "solo";
 	p2Ship = "crimson";
 	hack = false;
+	hackHold = 0;
 	hackBuf = "";
 	arcadeTaps = 0;
 	arcadeTapAt = 0;
@@ -2642,6 +2699,8 @@ var VectorFangGame = class {
 	bonusBanner = 0;
 	bonusSting = 0;
 	bonusPerfect = false;
+	cycle = 0;
+	apex = false;
 	constructor(canvas) {
 		this.canvas = canvas;
 		const ctx = canvas.getContext("2d");
@@ -3102,6 +3161,8 @@ var VectorFangGame = class {
 		this.mode = "lance";
 		this.overdrive = 0;
 		this.stage = 0;
+		this.cycle = 0;
+		this.apex = false;
 		this.ending = "none";
 		this.continues = 0;
 		this.continueT = 0;
@@ -3371,7 +3432,9 @@ var VectorFangGame = class {
 		}));
 		return {
 			stage: this.stage,
-			last: this.stage >= 9,
+			last: this.apex,
+			loopNext: !this.apex && this.stage >= 9 && this.cycle === 0,
+			apexNext: !this.apex && this.stage >= 9 && this.cycle >= 1,
 			score: this.score,
 			hi: Math.max(this.hi, this.score),
 			bounty: bountyOf(this.score) + refund,
@@ -3402,10 +3465,18 @@ var VectorFangGame = class {
 			return;
 		}
 		if (this.hack) {
-			if (this.stage >= 9) {
-				this.ending = bountyOf(this.score) >= 1e6 ? "both" : "served";
+			if (this.apex) {
+				this.ending = "true";
 				this.finishRun("thanks");
-			} else if (this.stage === 1 || this.stage === 4 || this.stage === 7) this.startBonus();
+			} else if (this.stage >= 9 && this.cycle === 0) {
+				this.cycle = 1;
+				this.stage = 0;
+				this.beginStage();
+				this.screen = "play";
+				this.sfx.startMusic(0);
+				this.onChange();
+			} else if (this.stage >= 9) this.startApex(true);
+			else if (this.stage === 1 || this.stage === 4 || this.stage === 7) this.startBonus();
 			else {
 				this.stage += 1;
 				this.sfx.startMusic(this.stage);
@@ -3437,9 +3508,23 @@ var VectorFangGame = class {
 	}
 	continueFromClear() {
 		if (!this.clearReport) return;
-		if (this.clearReport.last) {
-			this.ending = bountyOf(this.score) >= 1e6 ? "both" : "served";
+		if (this.apex || this.clearReport.last) {
+			this.ending = "true";
 			this.finishRun("thanks");
+			return;
+		}
+		if (this.stage >= 9 && this.cycle === 0) {
+			this.cycle = 1;
+			this.stage = 0;
+			this.pendingBonus = false;
+			this.sfx.startBriefMusic();
+			this.beginStage();
+			this.screen = "brief";
+			this.onChange();
+			return;
+		}
+		if (this.stage >= 9) {
+			this.startApex(false);
 			return;
 		}
 		if (this.pendingBonus) {
@@ -3451,6 +3536,20 @@ var VectorFangGame = class {
 		this.sfx.startBriefMusic();
 		this.beginStage();
 		this.screen = "brief";
+		this.onChange();
+	}
+	startApex(playNow) {
+		this.apex = true;
+		this.bonus = false;
+		this.pendingBonus = false;
+		this.beginStage();
+		if (playNow) {
+			this.screen = "play";
+			this.sfx.startMusic(9);
+		} else {
+			this.screen = "brief";
+			this.sfx.startBriefMusic();
+		}
 		this.onChange();
 	}
 	cashOut() {
@@ -3472,7 +3571,9 @@ var VectorFangGame = class {
 		this.ending = "mia";
 		this.saveHi();
 		if (this.hack) {
-			this.finishRun("over");
+			this.screen = "continue";
+			if (this.canContinue()) this.doContinue();
+			else this.finishRun("over");
 			return;
 		}
 		this.continueT = 8.99;
@@ -3507,6 +3608,17 @@ var VectorFangGame = class {
 		if (next === "thanks") this.sfx.startEndingMusic();
 		else if (next === "over") this.sfx.startTitleMusic();
 		if (qualifies(this.score, this.hiTable)) {
+			if (this.hack) {
+				this.nameChars = [
+					"C",
+					"P",
+					"U"
+				];
+				this.nameSlot = 0;
+				this.submitName();
+				if (next === "thanks") this.hackHold = 5;
+				return;
+			}
 			this.nameChars = [
 				"A",
 				"A",
@@ -3514,7 +3626,10 @@ var VectorFangGame = class {
 			];
 			this.nameSlot = 0;
 			this.screen = "name";
-		} else this.screen = next;
+		} else {
+			this.screen = next;
+			if (this.hack && next === "thanks") this.hackHold = 5;
+		}
 		this.onChange();
 	}
 	handleNameKey(code) {
@@ -3578,7 +3693,7 @@ var VectorFangGame = class {
 		this.applyLoadout();
 		this.bg = 0;
 		this.fluidBg = 0;
-		this.launchT = this.stage === 0 && !this.vs && !this.hack && !this.demo ? LAUNCH_DUR : 0;
+		this.launchT = this.stage === 0 && this.cycle === 0 && !this.apex && !this.vs && !this.hack && !this.demo ? LAUNCH_DUR : 0;
 		this.launchBark = "";
 		if (this.launchT > 0) {
 			this.px = 180;
@@ -4002,6 +4117,15 @@ var VectorFangGame = class {
 				this.continueT -= step;
 				if (this.continueT <= 0) this.finishRun("over");
 			}
+			if (this.hack && (this.screen === "thanks" || this.screen === "ending")) {
+				this.hackHold -= step;
+				if (this.hackHold <= 0) {
+					if (this.screen === "thanks") {
+						this.dismissThanks();
+						this.hackHold = 24;
+					} else this.goTitle();
+				}
+			}
 			this.acc -= step;
 		}
 		this.draw();
@@ -4054,13 +4178,18 @@ var VectorFangGame = class {
 			mark: false,
 			wy: void 0
 		}, partial, { alive: true });
-		e.hp = Math.max(1, Math.ceil(e.hp * this.diffOf().hp));
+		e.hp = Math.max(1, Math.ceil(e.hp * this.diffOf().hp * (this.cycle > 0 ? 1.38 : 1) * (this.cycle > 0 && isBossKind(e.kind) ? 1.55 : 1)));
 		e.maxHp = e.hp;
+		if (this.cycle > 0) e.vy *= 1.16;
 		return e;
 	}
 	seedTerrain() {
 		this.decor.forEach((d) => d.alive = false);
 		this.grounds.forEach((g) => g.alive = false);
+		if (this.apex) {
+			this.map = generateStageMap(0);
+			return;
+		}
 		this.map = generateStageMap(this.stage);
 		const theme = STAGE_THEME[this.stage] ?? STAGE_THEME[0];
 		const seed = this.stage * 97 + 13;
@@ -4474,7 +4603,11 @@ var VectorFangGame = class {
 			}
 			this.steerAuto(dt, true);
 		} else if (this.hack) this.steerAuto(dt, true);
-		else {
+		else if (this.touch.drag) {
+			this.px = Math.max(12, Math.min(348, this.touch.tx));
+			this.py = Math.max(24, Math.min(616, this.touch.ty));
+			this.qaSpeed = this.speed;
+		} else {
 			const duo = this.crew === "duo" && !this.vs;
 			let mx = 0, my = 0;
 			const m1 = this.moveVec(1);
@@ -4539,7 +4672,7 @@ var VectorFangGame = class {
 				if (this.bonusBanner <= 0) this.leaveBonus();
 			}
 		}
-		if ((this.launchT <= 0 || this.launchPhase() === "shot" || this.launchPhase() === "lift") && (this.demo || this.hack || this.actionDown(1, "fire") || this.touch.fire) && this.fireCd <= 0) this.fire();
+		if ((this.launchT <= 0 || this.launchPhase() === "shot" || this.launchPhase() === "lift") && (this.demo || this.hack || this.actionDown(1, "fire") || this.touch.fire || this.touch.drag) && this.fireCd <= 0) this.fire();
 		if (!this.demo && !this.hack && (this.actionDown(1, "special") || this.touch.special) && this.specialCd <= 0) this.fireSpecial();
 		if (!this.demo && !this.hack && (this.actionDown(1, "bomb") || this.touch.bomb) && this.bombCd <= 0) this.doBomb();
 		const modeNow = this.actionDown(1, "mode") || this.touch.mode || this.crew === "duo" && !this.vs && this.actionDown(2, "mode");
@@ -4553,9 +4686,10 @@ var VectorFangGame = class {
 		if (this.vs || this.crew === "wingman") this.updateCpu(dt);
 		if (this.hack && this.bombCd <= 0) {
 			let near = 0;
-			for (const b of this.eBullets) if (b.alive && Math.hypot(b.x - this.px, b.y - this.py) < 42) near += 1;
-			if (near >= 6) this.doBomb();
+			for (const b of this.eBullets) if (b.alive && Math.hypot(b.x - this.px, b.y - this.py) < 58) near += 1;
+			if (near >= 4 || this.lives <= 1 && near >= 2) this.doBomb();
 		}
+		if (this.hack && this.bossAlive && this.specialCd <= 0) this.fireSpecial();
 		this.updateDrones(dt);
 		this.updateTerrain(dt);
 		this.spawnWaves();
@@ -4728,35 +4862,91 @@ var VectorFangGame = class {
 		let x = isPlayer ? this.px : this.cx;
 		let y = isPlayer ? this.py : this.cy;
 		const speed = isPlayer ? this.speed : 176;
-		let dx = 0;
-		let dy = 0;
-		let threat = 1e9;
+		let ax = 0;
+		let ay = 0;
+		const look = .48;
 		for (const b of this.eBullets) {
-			if (!b.alive) continue;
-			const d = Math.hypot(b.x - x, b.y - y);
-			if (d < 88 && d < threat) {
-				threat = d;
-				dx = x - b.x;
-				dy = y - b.y;
+			if (!b.alive || b.friendly) continue;
+			const vx = b.vx || 0;
+			const vy = b.vy || 0;
+			const fx = b.x + vx * look;
+			const fy = b.y + vy * look;
+			const dNow = Math.hypot(x - b.x, y - b.y);
+			const dFut = Math.hypot(x - fx, y - fy);
+			const d = Math.min(dNow, dFut);
+			if (d > 120) continue;
+			const push = (120 - d) / 120;
+			let sx = -vy;
+			let sy = vx;
+			if (Math.hypot(sx, sy) < 12) {
+				sx = x - b.x || 1;
+				sy = y - b.y;
+			}
+			const nm = Math.hypot(sx, sy) || 1;
+			sx /= nm;
+			sy /= nm;
+			if (sx * (x - b.x) + sy * (y - b.y) < 0) {
+				sx = -sx;
+				sy = -sy;
+			}
+			ax += sx * push;
+			ay += sy * push * .9;
+			if (dNow < 34) {
+				ax += (x - b.x) / (dNow || 1) * 1.6;
+				ay += (y - b.y) / (dNow || 1) * 1.2;
 			}
 		}
-		if (threat < 88) {
-			const mag = Math.hypot(dx, dy) || 1;
-			x += dx / mag * speed * dt;
-			y += dy / mag * speed * .55 * dt;
+		for (const e of this.enemies) {
+			if (!e.alive || isBossKind(e.kind)) continue;
+			const d = Math.hypot(e.x - x, e.y - y);
+			if (d < 52) {
+				ax += (x - e.x) / (d || 1);
+				ay += (y - e.y) / (d || 1) * .45;
+			}
+		}
+		const panic = Math.hypot(ax, ay);
+		if (panic > .28) {
+			x += ax / panic * speed * dt;
+			y += ay / panic * speed * dt;
 		} else {
-			const tgt = this.nearestEnemy(x, y);
-			const weave = Math.sin(this.stageT * 1.35 + (isPlayer ? 0 : 1.8)) * 86;
-			const tx = tgt ? tgt.x + weave * .25 : 180 + weave;
-			const ty = 544 + Math.sin(this.stageT * .9 + (isPlayer ? 0 : 2)) * 18;
-			const ax = tx - x;
-			const ay = ty - y;
-			const mag = Math.hypot(ax, ay) || 1;
-			x += ax / mag * speed * .72 * dt;
-			y += ay / mag * speed * .42 * dt;
+			const home = 180 + Math.sin(this.stageT * .65 + (isPlayer ? 0 : 1.7)) * 48;
+			let bestX = home;
+			let best = 1e9;
+			for (let lane = 32; lane <= 328; lane += 24) {
+				let cost = Math.abs(lane - home) * .015;
+				for (const b of this.eBullets) {
+					if (!b.alive) continue;
+					if (b.y + (b.vy || 0) * .55 < y - 40 || b.y > y + 30) continue;
+					const gap = Math.abs(b.x + (b.vx || 0) * .3 - lane);
+					if (gap < 28) cost += (28 - gap) * 4;
+				}
+				if (cost < best) {
+					best = cost;
+					bestX = lane;
+				}
+			}
+			let tx = bestX;
+			let ty = 508 + Math.sin(this.stageT * .85) * 28;
+			if (isPlayer) {
+				let bestD = 120;
+				for (const it of this.items) {
+					if (!it.alive || it.hide) continue;
+					const d = Math.hypot(it.x - x, it.y - y);
+					if (d < bestD && it.y > 70 && it.y < 620) {
+						bestD = d;
+						tx = it.x;
+						ty = it.y;
+					}
+				}
+			}
+			const mx = tx - x;
+			const my = ty - y;
+			const mag = Math.hypot(mx, my) || 1;
+			x += mx / mag * speed * .82 * dt;
+			y += my / mag * speed * .62 * dt;
 		}
 		x = Math.max(16, Math.min(344, x));
-		y = Math.max(40, Math.min(612, y));
+		y = Math.max(48, Math.min(608, y));
 		if (isPlayer) {
 			const mx = x - this.px;
 			this.px = x;
@@ -4988,6 +5178,10 @@ var VectorFangGame = class {
 		}
 	}
 	spawnWaves() {
+		if (this.apex) {
+			this.spawnApexEncounter();
+			return;
+		}
 		if (this.bonus) {
 			this.spawnBonusWaves();
 			return;
@@ -4995,7 +5189,8 @@ var VectorFangGame = class {
 		if (this.launchT > 0) return;
 		const st = this.stage;
 		const t = this.stageT;
-		const tick = Math.floor(t * 2 * this.diffOf().dens);
+		const dens = this.diffOf().dens * (this.cycle > 0 ? 1.25 : 1);
+		const tick = Math.floor(t * 2 * dens);
 		if (tick === this.spawnI) return;
 		this.spawnI = tick;
 		const lane = () => 30 + Math.random() * 300;
@@ -5285,8 +5480,19 @@ var VectorFangGame = class {
 			this.finishBonus();
 		}
 	}
+	spawnApexEncounter() {
+		if (this.bossAlive || this.stageClearT > 0 || this.launchT > 0) return;
+		if (this.stageT >= 2.1 && !this.bossWarn) {
+			this.bossWarn = true;
+			for (const e of this.enemies) e.alive = false;
+			for (const b of this.eBullets) b.alive = false;
+			this.sfx.warn();
+			this.onChange();
+		}
+		if (this.stageT >= 4.2 && !this.bossAlive) this.spawnBoss();
+	}
 	spawnBoss() {
-		const meta = this.stage === 7 && !this.midCleared ? SUB_BOSS : BOSS_META[this.stage] ?? BOSS_META[9];
+		const meta = this.apex ? APEX_META : this.stage === 7 && !this.midCleared ? SUB_BOSS : BOSS_META[this.stage] ?? BOSS_META[9];
 		this.bossAlive = true;
 		this.bossWarn = true;
 		const patrol = meta.kind === "dunehauler" || meta.kind === "siegecrawler" || meta.kind === "battlekeel" || meta.kind === "krakenkeel";
@@ -5302,13 +5508,14 @@ var VectorFangGame = class {
 			ground: meta.kind === "siegecrawler" || meta.kind === "rootcitadel" || meta.kind === "dunehauler" || meta.kind === "silohydra"
 		});
 		this.sfx.boss();
-		this.sfx.startBossMusic(this.stage);
+		this.sfx.startBossMusic(this.apex ? 9 : this.stage);
 		this.shake = 8;
 		this.setAtk("");
 		this.onChange();
 	}
 	pulse(e, dt, hz) {
-		const h = hz * this.diffOf().fire;
+		let h = hz * this.diffOf().fire * (this.cycle > 0 ? 1.32 : 1);
+		if (this.cycle > 0 && isBossKind(e.kind)) h *= 1.22;
 		return Math.floor(e.t * h) !== Math.floor((e.t - dt) * h);
 	}
 	minionCount() {
@@ -5323,9 +5530,18 @@ var VectorFangGame = class {
 			e.flash = Math.max(0, e.flash - dt);
 			if (isBossKind(e.kind)) {
 				this.updateBoss(e, dt);
-				const maxY = e.kind === "skypike" ? 380 : 228;
+				const maxY = e.kind === "skypike" ? 380 : e.kind === "vectorhead" ? 210 : 228;
 				e.x = Math.max(36, Math.min(324, e.x));
 				e.y = Math.max(40, Math.min(maxY, e.y));
+				continue;
+			}
+			if (e.kind === "mite") {
+				e.x += e.vx * dt;
+				e.y += e.vy * dt;
+				if (e.x < 30 || e.x > 330) e.vx *= -1;
+				if (e.y > 560) e.vy = -Math.abs(e.vy || 40);
+				if (e.y < 90) e.vy = Math.abs(e.vy || 40);
+				if (this.pulse(e, dt, .85)) this.aimShot(e, 120, 1, "#ff7a3c");
 				continue;
 			}
 			if (e.kind === "wasp") {
@@ -5407,7 +5623,7 @@ var VectorFangGame = class {
 		}
 	}
 	updateBoss(e, dt) {
-		const restY = (e.kind === "krakenkeel" ? SUB_BOSS : BOSS_META[this.stage] ?? BOSS_META[0]).restY;
+		const restY = (this.apex || e.kind === "vectorhead" ? APEX_META : e.kind === "krakenkeel" ? SUB_BOSS : BOSS_META[this.stage] ?? BOSS_META[0]).restY;
 		const entering = e.t < 1.7;
 		e.tell = Math.max(0, e.tell - dt);
 		const ratio = e.hp / e.maxHp;
@@ -5439,6 +5655,7 @@ var VectorFangGame = class {
 		else if (e.kind === "battlekeel" || e.kind === "harborking") this.bossKeel(e, dt, p, ready, restY, entering);
 		else if (e.kind === "arsenalgate" || e.kind === "gyre") this.bossGate(e, dt, p, ready, restY, entering);
 		else if (e.kind === "skycathedral" || e.kind === "crowncore") this.bossCathedral(e, dt, p, ready, restY, entering);
+		else if (e.kind === "vectorhead") this.bossVector(e, dt, p, ready, restY, entering);
 		else if (e.kind === "solarmoth") {
 			e.x = 180 + Math.sin(e.t * .72) * 100;
 			e.y = restY + Math.sin(e.t * 1.35) * 18;
@@ -5540,6 +5757,11 @@ var VectorFangGame = class {
 				"SHIELD SPOKES",
 				"DOUBLE HELIX",
 				"CROWN FLOWER"
+			],
+			vectorhead: [
+				"EYE LANCES",
+				"MOUTH MISSILES",
+				"HATCH"
 			]
 		}[kind]?.[phase] ?? "";
 	}
@@ -5970,6 +6192,48 @@ var VectorFangGame = class {
 			if (this.pulse(e, dt, .48)) this.bloom(e.x, e.y, 8, 64, .32, "#3ec8ff", e.t);
 			if (this.pulse(e, dt, .68)) this.spread(e, 3, 142, .2, "#fff");
 			if (this.pulse(e, dt, .4)) this.ring(e, 8, 70, "#3ec8ff");
+		}
+	}
+	bossVector(e, dt, p, ready, restY, entering) {
+		if (!entering) e.y += (restY - e.y) * Math.min(1, dt * 1.15);
+		e.x = 180 + Math.sin(e.t * .42) * (34 + p * 12);
+		if (!ready) return;
+		const period = p === 0 ? 5.6 : p === 1 ? 4.8 : 4.3;
+		const u = this.cycleU(e, period);
+		const eyeY = e.y - 8;
+		const lx = e.x - 16;
+		const rx = e.x + 16;
+		let lancing = false;
+		if ((p === 0 || p === 2) && this.windAtk(e, u, .3, p === 2 ? 1.65 : 3.3, "EYE LANCES")) {
+			lancing = true;
+			const aim = Math.atan2(this.py - eyeY, this.px - e.x);
+			e.atk = aim;
+			if (this.pulse(e, dt, p === 2 ? 11 : 9)) {
+				this.shot(lx, eyeY, aim, 310, "#7fe8ff", { r: 1.7 });
+				this.shot(rx, eyeY, aim + (p >= 2 ? .07 : 0), 310, "#7fe8ff", { r: 1.7 });
+			}
+		}
+		if (!lancing) e.atk = -99;
+		if (p >= 1 && this.windAtk(e, u, p === 1 ? .35 : 1.8, p === 1 ? 2.7 : 3.05, "MOUTH MISSILES")) {
+			if (this.pulse(e, dt, p >= 2 ? 1.05 : .85)) {
+				this.fireMissile(e.x, e.y + 18);
+				if (p >= 2) this.fireMissile(e.x + Math.sin(e.t * 3) * 12, e.y + 20);
+			}
+		}
+		if (p >= 2 && this.windAtk(e, u, 3.15, period - .06, "HATCH")) {
+			if (this.pulse(e, dt, .62) && this.minionCount() < 5) {
+				const side = Math.random() < .5 ? -1 : 1;
+				this.spawnE({
+					kind: "mite",
+					x: e.x,
+					y: e.y + 24,
+					vx: side * 78,
+					vy: 42,
+					hp: 5,
+					r: 9,
+					score: 260
+				});
+			}
 		}
 	}
 	aimShot(e, spd, chance, color = "#ff5a6a") {
@@ -6617,6 +6881,12 @@ var VectorFangGame = class {
 			if (boss) {
 				this.bossAlive = false;
 				this.eBullets.forEach((b) => b.alive = false);
+				if (e.kind === "vectorhead") {
+					for (const m of this.enemies) if (m.alive && m.kind === "mite") {
+						m.alive = false;
+						this.boomFx(m.x, m.y, "#ff7a3c", 1);
+					}
+				}
 				if (e.kind === "krakenkeel") {
 					this.midCleared = true;
 					this.midSpawnT = 2.1;
@@ -6650,11 +6920,12 @@ var VectorFangGame = class {
 		}
 	}
 	incomingSpec() {
+		if (this.apex) return APEX_META;
 		return this.stage === 7 && !this.midCleared ? SUB_BOSS : BOSS_META[this.stage];
 	}
 	bossHud() {
 		const e = this.enemies.find((x) => x.alive && isBossKind(x.kind));
-		const spec = e ? e.kind === "krakenkeel" ? SUB_BOSS : BOSS_META[this.stage] : this.incomingSpec();
+		const spec = e ? e.kind === "vectorhead" ? APEX_META : e.kind === "krakenkeel" ? SUB_BOSS : BOSS_META[this.stage] : this.incomingSpec();
 		return {
 			warning: (this.bossWarn || this.midSpawnT > 0) && !e && this.stageClearT <= 0,
 			name: spec?.name ?? "",
@@ -6681,41 +6952,91 @@ var VectorFangGame = class {
 		if (this.screen === "play" || this.screen === "pause" || this.screen === "over" || this.screen === "win") this.drawWorld(c);
 	}
 	drawBg(c) {
+		if (this.apex) {
+			this.drawTron(c);
+			return;
+		}
 		drawTileMap(c, this.sprites.tiles, this.map, this.bg, this.stageT);
 	}
-	drawWorld(c) {
-		this.fluid.draw(c);
-		if (this.stage === 0) this.drawCarrier(c);
-		for (const d of this.decor) {
-			if (!d.alive) continue;
-			const prop = d.kind === "tree" || d.kind === "grass" ? this.stage === 3 || this.stage === 4 ? this.sprites.palm : this.sprites.tree : d.kind === "bush" ? this.sprites.bush : d.kind === "reef" ? this.sprites.bush : null;
-			if (prop && drawSprite(c, prop, d.x, d.y + 8, d.kind === "tree" ? 46 : 20, "feet")) continue;
-			drawDecor(c, d, this.stageT);
+	drawTron(c) {
+		c.fillStyle = "#01030a";
+		c.fillRect(0, 0, 360, 640);
+		const hy = 168;
+		const sky = c.createLinearGradient(0, 0, 0, 208);
+		sky.addColorStop(0, "#020614");
+		sky.addColorStop(1, "#062033");
+		c.fillStyle = sky;
+		c.fillRect(0, 0, 360, 192);
+		c.save();
+		c.strokeStyle = "#1ad4ff";
+		c.globalAlpha = .45;
+		c.lineWidth = 1;
+		c.beginPath();
+		for (let i = -9; i <= 9; i++) {
+			c.moveTo(180, hy);
+			c.lineTo(180 + i * 46, 640);
 		}
-		for (const g of this.grounds) {
-			if (!g.alive) continue;
-			const key = g.kind === "bunker" ? g.x < 360 * .33 ? "turret-blue" : g.x < 360 * .66 ? "turret-red" : "turret-orange" : g.kind === "radar" ? "radar" : g.kind === "hangar" ? "hangar" : g.kind === "silo" ? "silo" : g.kind === "crate" ? "crate" : g.kind === "dock" || g.kind === "barrel" ? "barrel" : g.kind === "fuel" ? "fuel" : g.kind === "hut" ? "hut" : g.kind === "tree" ? this.stage === 3 || this.stage === 4 ? "palm" : "tree" : g.kind === "bush" ? "bush" : "";
-			const h = g.kind === "hangar" ? 28 : g.kind === "bunker" ? 32 : g.kind === "fuel" ? 22 : g.kind === "barrel" ? 20 : g.kind === "hut" ? 24 : g.kind === "tree" ? 42 : 22;
-			if (!(key ? drawSprite(c, this.sprites[key], g.x, g.y + 8, h, "feet") : false)) drawGround(c, g);
-			else {
-				if (g.flash > 0) {
-					c.save();
-					c.globalAlpha = Math.min(.8, g.flash * 8);
-					c.fillStyle = "#fff";
-					c.beginPath();
-					c.arc(g.x, g.y, g.r * .85, 0, Math.PI * 2);
-					c.fill();
-					c.restore();
-				}
-				if (!isSoftTarget(g.kind)) {
-					c.fillStyle = "#1a1a1a";
-					c.fillRect(g.x - 14, g.y - g.r - 8, 28, 3);
-					c.fillStyle = "#f0c14a";
-					c.fillRect(g.x - 14, g.y - g.r - 8, 28 * (g.hp / g.maxHp), 3);
-				}
-				if (g.kind === "bunker" || g.kind === "tower" || g.kind === "radar") this.drawEmplacement(c, g);
+		const scroll = this.stageT * .85 % 1;
+		for (let i = 0; i < 16; i++) {
+			const t = (i + scroll) / 16;
+			const y = hy + t * t * 472;
+			c.moveTo(0, y);
+			c.lineTo(360, y);
+		}
+		c.stroke();
+		c.globalAlpha = .85;
+		c.strokeStyle = "#ff6a1a";
+		c.beginPath();
+		c.moveTo(0, hy);
+		c.lineTo(360, hy);
+		c.stroke();
+		c.globalAlpha = .18;
+		c.fillStyle = "#ff6a1a";
+		c.fillRect(0, 162, 360, 12);
+		c.globalAlpha = .35;
+		c.strokeStyle = "#ff6a1a";
+		c.globalAlpha = .15 + (Math.sin(this.stageT * 2) + 1) * .5 * .2;
+		for (let i = 0; i < 5; i++) {
+			const y = 40 + (i * 97 + this.stageT * 28) % 140;
+			c.strokeRect(24 + i * 18, y, 70, 8);
+		}
+		c.restore();
+	}
+	drawWorld(c) {
+		if (!this.apex) {
+			this.fluid.draw(c);
+			if (this.stage === 0) this.drawCarrier(c);
+			for (const d of this.decor) {
+				if (!d.alive) continue;
+				const prop = d.kind === "tree" || d.kind === "grass" ? this.stage === 3 || this.stage === 4 ? this.sprites.palm : this.sprites.tree : d.kind === "bush" ? this.sprites.bush : d.kind === "reef" ? this.sprites.bush : null;
+				if (prop && drawSprite(c, prop, d.x, d.y + 8, d.kind === "tree" ? 46 : 20, "feet")) continue;
+				drawDecor(c, d, this.stageT);
 			}
-			if (g.mark) this.drawMark(c, g.x, g.y, g.r + 6);
+			for (const g of this.grounds) {
+				if (!g.alive) continue;
+				const key = g.kind === "bunker" ? g.x < 360 * .33 ? "turret-blue" : g.x < 360 * .66 ? "turret-red" : "turret-orange" : g.kind === "radar" ? "radar" : g.kind === "hangar" ? "hangar" : g.kind === "silo" ? "silo" : g.kind === "crate" ? "crate" : g.kind === "dock" || g.kind === "barrel" ? "barrel" : g.kind === "fuel" ? "fuel" : g.kind === "hut" ? "hut" : g.kind === "tree" ? this.stage === 3 || this.stage === 4 ? "palm" : "tree" : g.kind === "bush" ? "bush" : "";
+				const h = g.kind === "hangar" ? 28 : g.kind === "bunker" ? 32 : g.kind === "fuel" ? 22 : g.kind === "barrel" ? 20 : g.kind === "hut" ? 24 : g.kind === "tree" ? 42 : 22;
+				if (!(key ? drawSprite(c, this.sprites[key], g.x, g.y + 8, h, "feet") : false)) drawGround(c, g);
+				else {
+					if (g.flash > 0) {
+						c.save();
+						c.globalAlpha = Math.min(.8, g.flash * 8);
+						c.fillStyle = "#fff";
+						c.beginPath();
+						c.arc(g.x, g.y, g.r * .85, 0, Math.PI * 2);
+						c.fill();
+						c.restore();
+					}
+					if (!isSoftTarget(g.kind)) {
+						c.fillStyle = "#1a1a1a";
+						c.fillRect(g.x - 14, g.y - g.r - 8, 28, 3);
+						c.fillStyle = "#f0c14a";
+						c.fillRect(g.x - 14, g.y - g.r - 8, 28 * (g.hp / g.maxHp), 3);
+					}
+					if (g.kind === "bunker" || g.kind === "tower" || g.kind === "radar") this.drawEmplacement(c, g);
+				}
+				if (g.mark) this.drawMark(c, g.x, g.y, g.r + 6);
+			}
 		}
 		for (const it of this.items) {
 			if (!it.alive) continue;
@@ -6850,7 +7171,7 @@ var VectorFangGame = class {
 		}
 		const boss = this.enemies.find((e) => e.alive && isBossKind(e.kind));
 		if (boss && boss.t < 2.8) {
-			const spec = boss.kind === "krakenkeel" ? SUB_BOSS : BOSS_META[this.stage];
+			const spec = this.apex || boss.kind === "vectorhead" ? APEX_META : boss.kind === "krakenkeel" ? SUB_BOSS : BOSS_META[this.stage];
 			c.textAlign = "center";
 			c.fillStyle = "#f0c14a";
 			c.font = "9px monospace";
@@ -7640,6 +7961,98 @@ var VectorFangGame = class {
 		}
 		c.globalAlpha = 1;
 	}
+	drawVectorHead(c, e) {
+		const open = this.bossAtk === "MOUTH MISSILES" || this.bossAtk === "HATCH";
+		c.save();
+		c.translate(e.x, e.y);
+		c.strokeStyle = "#ff6a1a";
+		c.fillStyle = "#d7dde6";
+		c.lineWidth = 1.4;
+		c.beginPath();
+		c.moveTo(0, -46);
+		c.lineTo(22, -34);
+		c.lineTo(34, -8);
+		c.lineTo(28, 22);
+		c.lineTo(12, 40);
+		c.lineTo(-12, 40);
+		c.lineTo(-28, 22);
+		c.lineTo(-34, -8);
+		c.lineTo(-22, -34);
+		c.closePath();
+		c.fill();
+		c.strokeStyle = "#1a1e24";
+		c.stroke();
+		c.fillStyle = "#101318";
+		c.fillRect(-10, -44, 20, 14);
+		c.fillStyle = "#ff6a1a";
+		c.fillRect(-8, -42, 16, 3);
+		c.strokeStyle = "#ff6a1a";
+		c.beginPath();
+		c.moveTo(-18, -38);
+		c.lineTo(-16, -58);
+		c.moveTo(18, -38);
+		c.lineTo(16, -58);
+		c.stroke();
+		c.fillStyle = "#ff6a1a";
+		c.fillRect(-17, -60, 3, 8);
+		c.fillRect(14, -60, 3, 8);
+		c.fillStyle = "#1a1e24";
+		c.beginPath();
+		c.arc(-16, -6, 11, 0, Math.PI * 2);
+		c.arc(16, -6, 11, 0, Math.PI * 2);
+		c.fill();
+		c.fillStyle = `rgba(90, 230, 255, ${.65 + Math.sin(e.t * 8) * .35})`;
+		c.beginPath();
+		c.arc(-16, -6, 5.5, 0, Math.PI * 2);
+		c.arc(16, -6, 5.5, 0, Math.PI * 2);
+		c.fill();
+		c.fillStyle = "#101318";
+		c.beginPath();
+		c.moveTo(0, 2);
+		c.lineTo(6, 14);
+		c.lineTo(-6, 14);
+		c.closePath();
+		c.fill();
+		c.fillStyle = "#07090c";
+		c.fillRect(-14, open ? 16 : 18, 28, open ? 12 : 5);
+		if (open) {
+			c.fillStyle = "#ff6a1a";
+			c.fillRect(-8, 19, 16, 3);
+		}
+		c.strokeStyle = "#ff6a1a";
+		c.beginPath();
+		c.moveTo(-20, 28);
+		c.lineTo(-12, 48);
+		c.moveTo(20, 28);
+		c.lineTo(12, 48);
+		c.stroke();
+		c.fillStyle = "#101318";
+		c.fillRect(-22, 8, 8, 16);
+		c.fillRect(14, 8, 8, 16);
+		c.strokeStyle = "#ff6a1a";
+		c.strokeRect(-22, 8, 8, 16);
+		c.strokeRect(14, 8, 8, 16);
+		c.restore();
+	}
+	drawMite(c, e) {
+		c.save();
+		c.translate(e.x, e.y);
+		c.rotate(Math.sin(e.t * 4) * .15);
+		c.fillStyle = "#101318";
+		c.strokeStyle = "#ff6a1a";
+		c.lineWidth = 1.2;
+		c.beginPath();
+		c.moveTo(0, 10);
+		c.lineTo(9, -8);
+		c.lineTo(0, -2);
+		c.lineTo(-9, -8);
+		c.closePath();
+		c.fill();
+		c.stroke();
+		c.fillStyle = "#7fe8ff";
+		c.fillRect(-2, -1, 4, 3);
+		c.restore();
+	}
 	drawEnemy(c, e) {
 		const stealth = e.kind === "phantomwing" && e.tag <= 0 && e.flash <= 0;
 		const ghost = e.kind === "phantomwing" && !stealth;
@@ -7659,7 +8072,9 @@ var VectorFangGame = class {
 			c.restore();
 		}
 		const dy = seaUnit ? 8 : e.ground ? 4 : 0;
-		if (im && im.complete && im.naturalWidth > 0) {
+		if (e.kind === "vectorhead") this.drawVectorHead(c, e);
+		else if (e.kind === "mite") this.drawMite(c, e);
+		else if (im && im.complete && im.naturalWidth > 0) {
 			c.save();
 			c.translate(e.x, e.y + dy);
 			if (e.kind === "wasp" || e.kind === "hornet" || e.kind === "lancejet" || e.kind === "gilded" || e.kind === "redtide") c.rotate(Math.sin(e.t * 3.2 + e.x * .02) * .1);
@@ -7758,6 +8173,22 @@ var VectorFangGame = class {
 		if (isBossKind(e.kind)) this.drawBossTells(c, e);
 	}
 	drawBossTells(c, e) {
+		if (e.kind === "vectorhead") {
+			if (e.atk > -90) {
+				c.save();
+				c.strokeStyle = "#7fe8ff";
+				c.globalAlpha = .55;
+				c.lineWidth = 2;
+				c.beginPath();
+				c.moveTo(e.x - 16, e.y - 8);
+				c.lineTo(e.x - 16 + Math.cos(e.atk) * 420, e.y - 8 + Math.sin(e.atk) * 420);
+				c.moveTo(e.x + 16, e.y - 8);
+				c.lineTo(e.x + 16 + Math.cos(e.atk) * 420, e.y - 8 + Math.sin(e.atk) * 420);
+				c.stroke();
+				c.restore();
+			}
+			return;
+		}
 		c.save();
 		c.lineWidth = 1.6;
 		if (e.kind === "siegecrawler") {
@@ -8195,7 +8626,9 @@ function VectorFang() {
 		bonusPay: 0,
 		bonusPerfect: false,
 		bonusBanner: 0,
-		bonusName: BONUS_STAGES[0]
+		bonusName: BONUS_STAGES[0],
+		cycle: 0,
+		apex: false
 	});
 	(0, import_react.useEffect)(() => {
 		const canvas = canvasRef.current;
@@ -8261,7 +8694,9 @@ function VectorFang() {
 				bonusPay: game.bonusPay,
 				bonusPerfect: game.bonusPerfect,
 				bonusBanner: game.bonusBanner,
-				bonusName: game.bonusName()
+				bonusName: game.bonusName(),
+				cycle: game.cycle,
+				apex: game.apex
 			});
 		};
 		game.onChange = sync;
@@ -8404,16 +8839,40 @@ function VectorFang() {
 	const playVs = () => {
 		g()?.launchVs();
 	};
-	const onStick = (clientX, clientY, target) => {
-		const r = target.getBoundingClientRect();
-		const x = (clientX - r.left) / r.width * 2 - 1;
-		const y = (clientY - r.top) / r.height * 2 - 1;
+	const followFinger = (e) => {
+		const canvas = canvasRef.current;
+		const game = g();
+		if (!canvas || !game || game.screen !== "play" || game.demo || game.hack) return;
+		const r = canvas.getBoundingClientRect();
+		if (r.width < 1 || r.height < 1) return;
+		const x = (e.clientX - r.left) / r.width * 360;
+		const y = (e.clientY - r.top) / r.height * 640 - 72;
+		game.touch.drag = true;
+		game.touch.tx = x;
+		game.touch.ty = y;
+	};
+	const endFinger = () => {
 		const game = g();
 		if (!game) return;
-		game.touch.moving = true;
-		game.touch.mx = Math.max(-1, Math.min(1, x));
-		game.touch.my = Math.max(-1, Math.min(1, y));
+		game.touch.drag = false;
 	};
+	const holdTouch = (flag) => ({
+		style: { touchAction: "none" },
+		onPointerDown: (e) => {
+			e.stopPropagation();
+			e.currentTarget.setPointerCapture(e.pointerId);
+			const game = g();
+			if (game) game.touch[flag] = true;
+		},
+		onPointerUp: () => {
+			const game = g();
+			if (game) game.touch[flag] = false;
+		},
+		onPointerCancel: () => {
+			const game = g();
+			if (game) game.touch[flag] = false;
+		}
+	});
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 		className: "flex min-h-dvh flex-col items-center bg-vf-bg text-vf-ice",
 		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
@@ -8431,7 +8890,19 @@ function VectorFang() {
 					style: {
 						touchAction: "none",
 						imageRendering: "pixelated"
-					}
+					},
+					onPointerDown: (e) => {
+						if (e.pointerType === "mouse") return;
+						e.currentTarget.setPointerCapture(e.pointerId);
+						followFinger(e);
+					},
+					onPointerMove: (e) => {
+						if (e.pointerType === "mouse") return;
+						if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+						followFinger(e);
+					},
+					onPointerUp: endFinger,
+					onPointerCancel: endFinger
 				}),
 				screen !== "play" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 					ref: menuRef,
@@ -8652,7 +9123,7 @@ function VectorFang() {
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Move with WASD, arrows, or a PS4 pad: left stick and D-pad. Options starts. Cross or R2 fires. Circle or R1 is the bomb. Square or L1 is the special. Triangle swaps drones. Options pauses in flight. Share mutes. CONTROLS on the title lets each player pick keyboard, PS4, or both, and rebind every button." }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Hi-score letters: D-pad up and down changes the letter, left and right changes the slot, Cross enters. Secret code: ENTER CODE, then the letter grid. Circle deletes." }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Sortie 01 catapults off the NEXO carrier. Lock 0.55s, 3-2-1 on 0.48s beats (T-minus 2.54s to the shot), ignite 0.55s, then a 2.05s burn down the keel." }),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Recorded themes: title, hangar, briefing, one track per sortie, boss, Sky Cathedral, bonus, stage clear, contract, and the ending." }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Recorded themes: title, hangar, briefing, one track per sortie, boss, Sky Cathedral, the Grid, bonus, stage clear, contract, and the ending." }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "LANCE drones fire lasers. SEEK drones home. Overdrive dumps every 6s." }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Tiny white core is your hitbox. Shells and air units clip it — tanks, ships, and buildings you fly over. Chain air kills onto ground units for multipliers." }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Each stage ends with a named boss. Watch the warning sting, then break their armor phases." }),
@@ -8672,7 +9143,7 @@ function VectorFang() {
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "1P, 2P, or 1P+CPU on the select screen. P1 is WASD. P2 is arrows and Enter. Shared hearts." }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Ground bunkers, hangars, docks, and crates drop gold, bombs, shields, and extra lives. Barrels and fuel tanks chain-explode — dump a row and anything next to them goes with it. Trees, rocks, and huts also break. Tanks stay on land. Water is for destroyers and subs — they lock missiles on you." }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Three hearts start a run. Empty them and it is game over — unless you continue from bounty." }),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Rin: highest fire rate. Mack: wide shot + extra special stock. Greta: 45° ground stream. SPACE gun · Z special · X bomb. Shields eat hits before lives." }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Rin: highest fire rate. Mack: wide shot + extra special stock. Greta: 45° ground stream. SPACE gun · Z special · X bomb. Shields eat hits before lives. Type HACKMODE on the title and the CPU flies the whole contract: both loops, the Grid, and the ending." }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 										type: "button",
 										className: "min-h-11 rounded-md bg-vf-cyan font-display text-sm font-bold text-vf-bg",
@@ -8697,7 +9168,7 @@ function VectorFang() {
 										children: [
 											"1. Serve three years. 2. Buy out for ",
 											money(1e6),
-											". 3. Desert — treason."
+											". 3. Desert — treason. Finish Thunderkeep and the sorties start again, harder. Finish them a second time and the Grid opens."
 										]
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
@@ -8806,12 +9277,12 @@ function VectorFang() {
 								children: [
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 										className: "flex items-start justify-between gap-2",
-										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 											className: "font-display text-lg tracking-widest text-vf-ice drop-shadow",
-											children: ["SORTIE ", String(hud.stage + 1).padStart(2, "0")]
+											children: hud.apex ? "FINAL" : `SORTIE ${String(hud.stage + 1).padStart(2, "0")}`
 										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 											className: "font-mono text-[10px] text-vf-gold",
-											children: STAGES[hud.stage]
+											children: hud.apex ? "THE GRID" : hud.cycle > 0 ? `LOOP · ${STAGES[hud.stage]}` : STAGES[hud.stage]
 										})]
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", {
@@ -8822,10 +9293,26 @@ function VectorFang() {
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 										className: "rounded-sm border border-vf-line bg-vf-bg/92 p-3",
-										children: [
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+											className: "font-mono text-[10px] tracking-[0.25em] text-vf-gold",
+											children: CREW.vale.name
+										}), hud.apex ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
 											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-												className: "font-mono text-[10px] tracking-[0.25em] text-vf-gold",
-												children: CREW.vale.name
+												className: "mt-2 font-mono text-sm leading-relaxed text-vf-ice",
+												children: APEX_BRIEF.target
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+												className: "mt-2 font-mono text-sm leading-relaxed text-vf-mute",
+												children: APEX_BRIEF.weak
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+												className: "mt-2 font-mono text-[11px] text-vf-gold",
+												children: APEX_BRIEF.payout
+											})
+										] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+											hud.cycle > 0 && hud.stage === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+												className: "mt-2 font-mono text-sm leading-relaxed text-vf-gold",
+												children: "Thunderkeep is down. The contract does not close. Sorties restart. Every boss hits harder. Finish them again."
 											}),
 											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 												className: "mt-2 font-mono text-sm leading-relaxed text-vf-ice",
@@ -8839,7 +9326,7 @@ function VectorFang() {
 												className: "mt-2 font-mono text-[11px] text-vf-gold",
 												children: BRIEFS[hud.stage]?.payout
 											})
-										]
+										] })]
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
 										className: "font-mono text-xs text-vf-cyan",
@@ -9212,7 +9699,7 @@ function VectorFang() {
 											children: money(s.refund)
 										})]
 									}, s.name))] }),
-									!hud.clear.last && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									!hud.clear.last && !hud.clear.apexNext && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 										className: "flex items-center gap-3",
 										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", {
 											src: CREW_PORTRAITS.nash,
@@ -9224,7 +9711,7 @@ function VectorFang() {
 											children: CREW.nash.name
 										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
 											className: "font-display text-sm text-vf-ice",
-											children: ["RE-ARM BEFORE SORTIE ", String(hud.clear.stage + 2).padStart(2, "0")]
+											children: ["RE-ARM BEFORE SORTIE ", hud.clear.loopNext ? "01" : String(hud.clear.stage + 2).padStart(2, "0")]
 										})] })]
 									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(HangarCatalog, {
 										ship,
@@ -9237,7 +9724,7 @@ function VectorFang() {
 										type: "button",
 										className: "min-h-11 rounded-md bg-vf-cyan font-display text-sm font-bold text-vf-bg",
 										onClick: () => g()?.continueFromClear(),
-										children: hud.clear.last ? "END CONTRACT" : hud.pendingBonus ? "BONUS STAGE" : "NEXT BRIEFING"
+										children: hud.clear.last ? "TRUE ENDING" : hud.clear.apexNext ? "ENTER THE GRID" : hud.clear.loopNext ? "SECOND CONTRACT" : hud.pendingBonus ? "BONUS STAGE" : "NEXT BRIEFING"
 									})
 								]
 							}),
@@ -9586,9 +10073,13 @@ function VectorFang() {
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
 										className: "font-display text-lg tracking-wide text-vf-cyan",
-										children: hud.ending === "bought" ? PILOT_ENDINGS[ship].bought.title : hud.ending === "both" ? PILOT_ENDINGS[ship].both.title : PILOT_ENDINGS[ship].served.title
+										children: hud.ending === "true" ? PILOT_ENDINGS[ship].trueEnd.title : hud.ending === "bought" ? PILOT_ENDINGS[ship].bought.title : hud.ending === "both" ? PILOT_ENDINGS[ship].both.title : PILOT_ENDINGS[ship].served.title
 									}),
-									(hud.ending === "bought" ? PILOT_ENDINGS[ship].bought.lines : hud.ending === "both" ? PILOT_ENDINGS[ship].both.lines : PILOT_ENDINGS[ship].served.lines).map((line) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+									hud.ending === "true" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+										className: "font-mono text-sm leading-relaxed text-vf-ice",
+										children: ENDINGS.true.line
+									}),
+									(hud.ending === "true" ? PILOT_ENDINGS[ship].trueEnd.lines : hud.ending === "bought" ? PILOT_ENDINGS[ship].bought.lines : hud.ending === "both" ? PILOT_ENDINGS[ship].both.lines : PILOT_ENDINGS[ship].served.lines).map((line) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 										className: "font-mono text-sm leading-relaxed text-vf-mute",
 										children: line
 									}, line.slice(0, 24))),
@@ -9710,7 +10201,7 @@ function VectorFang() {
 							children: [
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 									className: "text-vf-cyan",
-									children: hud.demo ? "DEMO" : hud.hack && !hud.bonus ? "HACKMODE" : hud.bonus ? hud.bonusName : STAGES[hud.stage]
+									children: hud.demo ? "DEMO" : hud.hack ? hud.apex ? "CPU · THE GRID" : hud.cycle > 0 ? `CPU LOOP ${STAGES[hud.stage]}` : `CPU ${STAGES[hud.stage]}` : hud.apex ? "THE GRID" : hud.bonus ? hud.bonusName : hud.cycle > 0 ? `LOOP ${STAGES[hud.stage]}` : STAGES[hud.stage]
 								}),
 								hud.demo ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: "ATTRACT MODE" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 									className: "flex items-center justify-end gap-0.5",
@@ -9810,79 +10301,31 @@ function VectorFang() {
 							children: hud.muted ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VolumeX, { className: "size-4" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Volume2, { className: "size-4" })
 						})]
 					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "absolute bottom-4 left-0 right-0 flex items-end justify-between px-4 md:hidden",
-						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-							className: "size-28 rounded-full border border-vf-line bg-vf-panel/50",
-							onPointerDown: (e) => {
-								e.target.setPointerCapture(e.pointerId);
-								onStick(e.clientX, e.clientY, e.currentTarget);
-							},
-							onPointerMove: (e) => {
-								if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-								onStick(e.clientX, e.clientY, e.currentTarget);
-							},
-							onPointerUp: () => {
-								const game = g();
-								if (game) {
-									game.touch.moving = false;
-									game.touch.mx = 0;
-									game.touch.my = 0;
-								}
-							}
+						className: "pointer-events-none absolute bottom-3 right-3 flex flex-col items-end gap-2 md:hidden",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+							className: "font-mono text-[9px] tracking-[0.18em] text-vf-mute",
+							children: "DRAG TO FLY · AUTO FIRE"
 						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "flex flex-col gap-2",
+							className: "pointer-events-auto flex gap-2",
+							style: { touchAction: "none" },
 							children: [
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 									type: "button",
-									className: "min-h-11 rounded-md bg-vf-gold px-4 font-display text-xs font-bold text-vf-bg",
-									onPointerDown: () => {
-										const game = g();
-										if (game) game.touch.special = true;
-									},
-									onPointerUp: () => {
-										const game = g();
-										if (game) game.touch.special = false;
-									},
+									className: "min-h-12 min-w-16 rounded-md bg-vf-gold px-3 font-display text-[11px] font-bold text-vf-bg",
+									...holdTouch("special"),
 									children: "SPEC"
 								}),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 									type: "button",
-									className: "min-h-11 rounded-md bg-vf-gold px-4 font-display text-xs font-bold text-vf-bg",
-									onPointerDown: () => {
-										const game = g();
-										if (game) game.touch.mode = true;
-									},
-									onPointerUp: () => {
-										const game = g();
-										if (game) game.touch.mode = false;
-									},
+									className: "min-h-12 min-w-16 rounded-md border border-vf-cyan bg-vf-panel/80 px-3 font-display text-[11px] font-bold text-vf-cyan",
+									...holdTouch("mode"),
 									children: "MODE"
 								}),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 									type: "button",
-									className: "min-h-11 rounded-md bg-vf-crimson px-4 font-display text-xs font-bold text-vf-ice",
-									onPointerDown: () => {
-										const game = g();
-										if (game) game.touch.bomb = true;
-									},
-									onPointerUp: () => {
-										const game = g();
-										if (game) game.touch.bomb = false;
-									},
+									className: "min-h-14 min-w-20 rounded-md bg-vf-crimson px-4 font-display text-sm font-bold text-vf-ice",
+									...holdTouch("bomb"),
 									children: "BOMB"
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-									type: "button",
-									className: "min-h-14 min-w-20 rounded-md bg-vf-cyan px-5 font-display text-sm font-bold text-vf-bg",
-									onPointerDown: () => {
-										const game = g();
-										if (game) game.touch.fire = true;
-									},
-									onPointerUp: () => {
-										const game = g();
-										if (game) game.touch.fire = false;
-									},
-									children: "FIRE"
 								})
 							]
 						})]

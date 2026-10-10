@@ -82,6 +82,9 @@ export class Sfx {
   pickup() {
     this.beep(660, 0.08, "square", 0.22, 400);
   }
+  coin() {
+    this.beep(740, 0.09, "square", 0.24, 420);
+  }
   bomb() {
     this.beep(80, 0.5, "triangle", 0.42, -40);
   }
